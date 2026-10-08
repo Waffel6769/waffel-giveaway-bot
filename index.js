@@ -66,7 +66,7 @@ async function handleModCommands(message, command, args) {
 
     if (command === 'clear') {
         if (!manageMessagesPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        const amount = parseInt(args[0]);
+        const amount = parseInt(args);
         if (isNaN(amount) || amount < 1 || amount > 100) return message.channel.send("⚠️ Please provide a number between 1 and 100.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         await message.channel.bulkDelete(amount + 1, true).catch(() => null);
         return message.channel.send("🧹 Deleted messages.").then(m => setTimeout(() => m.delete().catch(() => null), 4000));
@@ -82,15 +82,35 @@ async function handleModCommands(message, command, args) {
         catch (e) { return message.channel.send("❌ Unable to add role. Check role hierarchy.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); }
     }
 
+    // Nouvelle commande ?unwarn @membre
+    if (command === 'unwarn') {
+        setTimeout(() => message.delete().catch(() => null), 200);
+        if (!banPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
+        if (!target) return message.channel.send("❌ Please mention a valid user or provide their ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        
+        if (!warnDatabase[target.id] || warnDatabase[target.id].length === 0) {
+            return message.channel.send(`✅ **${target.user.tag}** has no active warnings to remove.`);
+        }
+        
+        warnDatabase[target.id].pop(); // Supprime le tout dernier avertissement reçu
+        return message.channel.send(`🧹 Removed the latest warning from **${target.user.tag}** (Remaining: ${warnDatabase[target.id].length}).`);
+    }
+
     if (!['to', 'rto', 'kick', 'ban', 'unban', 'warn'].includes(command)) return;
     setTimeout(() => message.delete().catch(() => null), 200);
     if (!banPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
 
+    // Commande ?unban améliorée (accepte les ID)
     if (command === 'unban') {
         const userId = args[0];
         if (!userId) return message.channel.send("❌ Please provide a valid User ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        try { await message.guild.members.unban(userId); return message.channel.send(`🔓 **User (${userId})** successfully unbanned.`); } 
-        catch (e) { return message.channel.send("❌ User not found or not banned.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); }
+        try { 
+            await message.guild.members.unban(userId); 
+            return message.channel.send(`🔓 **User ID (${userId})** has been successfully unbanned.`); 
+        } catch (e) { 
+            return message.channel.send("❌ User not found or is not currently banned.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); 
+        }
     }
 
     const target = message.mentions.members.first();
@@ -108,7 +128,7 @@ async function handleModCommands(message, command, args) {
 
     function parseDuration(str) {
         if (!str) return null; const match = str.match(/^(\d+)(s|m|h|d)/i); if (!match) return null;
-        const val = parseInt(match[1]); const unit = match[2].toLowerCase();
+        const val = parseInt(match); const unit = match.toLowerCase();
         if (unit === 's') return val * 1000; if (unit === 'm') return val * 60 * 1000;
         if (unit === 'h') return val * 60 * 60 * 1000; if (unit === 'd') return val * 24 * 60 * 60 * 1000;
         return null;
@@ -117,7 +137,7 @@ async function handleModCommands(message, command, args) {
     if (command === 'rto') { await target.timeout(null); return message.channel.send(`🗣️ **${target.user.tag}** timeout removed!`); }
 
     if (command === 'to') {
-        const timeArg = args[1]; const durationMs = parseDuration(timeArg);
+        const timeArg = args; const durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         let finalDuration = durationMs || (60 * 1000);
         await target.timeout(finalDuration, reason);
@@ -127,7 +147,7 @@ async function handleModCommands(message, command, args) {
     if (command === 'kick') { const reason = args.slice(1).join(' ') || "No reason provided"; await target.kick(reason); return message.channel.send(`👢 **${target.user.tag}** kicked. Reason: ${reason}`); }
 
     if (command === 'ban') {
-        const timeArg = args[1]; const durationMs = parseDuration(timeArg);
+        const timeArg = args; const durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         await target.ban({ reason }); message.channel.send(`🔨 **${target.user.tag}** banned. Reason: ${reason}`);
         if (durationMs) { setTimeout(async () => { await message.guild.members.unban(target.id).catch(() => null); message.channel.send(`🔓 **${target.user.tag}** temporary ban expired.`); }, durationMs); }
@@ -356,3 +376,4 @@ app.get('/', (req, res) => {
 });
 app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
+
