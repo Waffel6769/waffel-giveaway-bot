@@ -5,7 +5,6 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBit
 
 const warnDatabase = {}; 
 
-// Liste mise à jour de vos commandes Slash incluant /help et /wjamal
 const commands = [
     new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
     new SlashCommandBuilder().setName('userinfo').setDescription('Display official profile information about a user 👤')
@@ -15,8 +14,8 @@ const commands = [
         .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
     new SlashCommandBuilder().setName('infractions').setDescription('View the moderation history and warnings of a user 📜')
         .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
-    new SlashCommandBuilder().setName('help').setDescription('Afficher la liste de toutes les commandes disponibles du bot 📋'),
-    new SlashCommandBuilder().setName('wjamal').setDescription('Envoyer un GIF de grenouille totalement aléatoire 🐸')
+    new SlashCommandBuilder().setName('help').setDescription('Display the list of all available bot commands 📋'),
+    new SlashCommandBuilder().setName('wjamal').setDescription('Send a random funny frog GIF 🐸')
 ].map(cmd => cmd.toJSON());
 
 client.once('ready', async () => {
@@ -27,7 +26,6 @@ client.once('ready', async () => {
         console.log('✅ Successfully reloaded application (/) commands.');
     } catch (error) { console.error(error); }
 });
-
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
@@ -77,18 +75,11 @@ async function handleModCommands(message, command, args) {
     if (command === 'roleadd') {
         setTimeout(() => message.delete().catch(() => null), 200);
         if (!manageRolesPerm) return message.channel.send("❌ You don't have permission to manage roles.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        
         const target = message.mentions.members.first();
         const role = message.mentions.roles.first();
-        
         if (!target || !role) return message.channel.send("⚠️ Usage: `?roleadd @member @role`").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        
-        try {
-            await target.roles.add(role);
-            return message.channel.send(`✅ The role **${role.name}** has been successfully added to **${target.user.tag}**.`);
-        } catch (e) {
-            return message.channel.send("❌ Unable to add role. Check role hierarchy and my permissions.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        }
+        try { await target.roles.add(role); return message.channel.send(`✅ The role **${role.name}** has been successfully added to **${target.user.tag}**.`); } 
+        catch (e) { return message.channel.send("❌ Unable to add role. Check role hierarchy.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); }
     }
 
     if (!['to', 'rto', 'kick', 'ban', 'unban', 'warn'].includes(command)) return;
@@ -147,7 +138,6 @@ client.on('interactionCreate', async (interaction) => {
         const targetUser = interaction.options.getUser('target') || interaction.user;
         const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
 
-        // Traduction anglaise de la commande /help
         if (interaction.commandName === 'help') {
             const embed = new EmbedBuilder()
                 .setTitle('📋 Available Bot Commands Inventory')
@@ -162,7 +152,6 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ embeds: [embed] });
         }
 
-        // Commande /wjamal avec titre "W JAMAL", textes en anglais et GIFs corrigés
         if (interaction.commandName === 'wjamal') {
             const frogGifs = [
                 'https://giphy.com',
@@ -172,10 +161,7 @@ client.on('interactionCreate', async (interaction) => {
                 'https://giphy.com'
             ];
             const randomFrog = frogGifs[Math.floor(Math.random() * frogGifs.length)];
-            const embed = new EmbedBuilder()
-                .setTitle('🐸 W JAMAL')
-                .setColor('#2ECC71')
-                .setImage(randomFrog);
+            const embed = new EmbedBuilder().setTitle('🐸 W JAMAL').setColor('#2ECC71').setImage(randomFrog);
             return interaction.reply({ embeds: [embed] });
         }
 
@@ -207,13 +193,10 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.commandName === 'infractions') {
             const warns = warnDatabase[targetUser.id] || [];
             const embed = new EmbedBuilder().setTitle(`📜 Moderation History for ${targetUser.username}`).setColor(warns.length > 0 ? '#E74C3C' : '#2ECC71');
-            if (warns.length === 0) {
-                embed.setDescription(`✅ This user has a perfectly clean record. No infractions found!`);
-            } else {
+            if (warns.length === 0) { embed.setDescription(`✅ This user has a perfectly clean record. No infractions found!`); } 
+            else {
                 embed.setDescription(`⚠️ Total Warnings: **${warns.length}**`);
-                warns.forEach((warn, index) => {
-                    embed.addFields({ name: `Warning #${index + 1} (${warn.date})`, value: `**Reason:** ${warn.reason}\n**Moderator:** ${warn.moderator}` });
-                });
+                warns.forEach((warn, index) => { embed.addFields({ name: `Warning #${index + 1} (${warn.date})`, value: `**Reason:** ${warn.reason}\n**Moderator:** ${warn.moderator}` }); });
             }
             return interaction.reply({ embeds: [embed] });
         }
@@ -232,7 +215,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
-        const mode = interaction.values;
+        const mode = interaction.values[0];
         const modal = new ModalBuilder().setCustomId(`modal_waffel_${mode}`).setTitle(`Setup: ${mode.toUpperCase()} Mode 🧇`);
         const pInput = new TextInputBuilder().setCustomId('input_prize').setLabel("What is the prize?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 2 Waffles").setRequired(true);
         const dInput = new TextInputBuilder().setCustomId('input_duration').setLabel("Duration (in minutes):").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 5").setRequired(true);
@@ -287,7 +270,7 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
         if (!endMsg) return;
 
         if (participants.length === 0) { participants.push('266277684074217472'); }
-        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants); }
+        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants[0]); }
 
         if (participants.length < winnerCount) {
             const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎁 **Prize:** ${prize}\n\n❌ **Giveaway Ended:** Not enough participants.`);
@@ -307,7 +290,7 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
 }
 async function handleMiniGames(channel, winners, prize, duration, winnerCount, mode) {
     if (mode === 'dok') {
-        const winnerId = winners;
+        const winnerId = winners[0];
         const doubleBtn = new ButtonBuilder().setCustomId('dok_double').setLabel('Double 🟢').setStyle(ButtonStyle.Success);
         const keepBtn = new ButtonBuilder().setCustomId('dok_keep').setLabel('Keep 🔴').setStyle(ButtonStyle.Danger);
         const gameRow = new ActionRowBuilder().addComponents(doubleBtn, keepBtn);
@@ -319,14 +302,14 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
             await gameMsg.edit({ components: [new ActionRowBuilder().addComponents(doubleBtn, keepBtn)] });
             if (gInt.customId === 'dok_keep') { await gInt.reply(`🔒 **Giveaway Ended... KEEP!** <@${winnerId}> kept their **${prize}**! GG! 🧇🎁`); } else {
                 let newPrize = prize; const match = prize.match(/\d+/);
-                if (match) { const oldN = parseInt(match); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = `2x ${prize}`; }
+                if (match) { const oldN = parseInt(match[0]); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = `2x ${prize}`; }
                 await gInt.reply(`🟢 **DOUBLE ACTIVATED!** New reward: **${newPrize}**! Re-rolling in 5s... 🚀`);
                 setTimeout(() => startGiveawayEngine(channel, duration, newPrize, winnerCount, 'dok'), 5000);
             }
         });
     }
     if (mode === 'sos') {
-        const p1 = winners; const p2 = winners;
+        const p1 = winners[0]; const p2 = winners[1];
         const splitBtn = new ButtonBuilder().setCustomId('sos_split').setLabel('Split 🟢').setStyle(ButtonStyle.Success);
         const stealBtn = new ButtonBuilder().setCustomId('sos_steal').setLabel('Steal 🔴').setStyle(ButtonStyle.Danger);
         const sosRow = new ActionRowBuilder().addComponents(splitBtn, stealBtn);
@@ -336,7 +319,7 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
             if (sInt.user.id !== p1 && sInt.user.id !== p2) return sInt.reply({ content: "❌ You are not a winner!", ephemeral: true });
             if (choices[sInt.user.id]) return sInt.reply({ content: "⚠️ You already chose!", ephemeral: true });
             choices[sInt.user.id] = sInt.customId.replace('sos_', ''); await sInt.reply({ content: `✅ Choice registered!`, ephemeral: true });
-            if (choices[p1] && choices[choices[p2]]) {
+            if (choices[p1] && choices[p2]) {
                 sosColl.stop(); splitBtn.setDisabled(true); stealBtn.setDisabled(true);
                 await sosMsg.edit({ components: [new ActionRowBuilder().addComponents(splitBtn, stealBtn)] });
                 if (choices[p1] === 'split' && choices[p2] === 'split') { channel.send(`🤝 **SPLIT!** <@${p1}> and <@${p2}> share the prize: **${prize}**! 🎉`); }
@@ -346,7 +329,7 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
         });
     }
     if (mode === 'rps') {
-        const p1 = winners; const p2 = winners;
+        const p1 = winners[0]; const p2 = winners[1];
         const rBtn = new ButtonBuilder().setCustomId('rps_rock').setLabel('🪨 Rock').setStyle(ButtonStyle.Secondary);
         const pBtn = new ButtonBuilder().setCustomId('rps_paper').setLabel('📄 Paper').setStyle(ButtonStyle.Primary);
         const sBtn = new ButtonBuilder().setCustomId('rps_scissors').setLabel('✂️ Scissors').setStyle(ButtonStyle.Danger);
@@ -377,4 +360,3 @@ app.get('/', (req, res) => {
 });
 app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
-
