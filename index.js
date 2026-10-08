@@ -94,7 +94,6 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
         const endMsg = await channel.messages.fetch(msg.id).catch(() => null);
         if (!endMsg) return;
 
-        // --- SÉCURITÉ TEST : SI TU ES SEUL, LE BOT REPREND TON ID EN DOUBLE POUR LES MODES À 2 ---
         if (participants.length === 0) { participants.push('266277684074217472'); }
         if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants[0]); }
 
@@ -111,106 +110,68 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
         await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
         await channel.send(`🎉 🧇 **CONGRATULATIONS** ${winnersMention}! You won **${prize}**! 🎁✨`);
 
-        // Activation de la logique des mini-jeux
         handleMiniGames(channel, winners, prize, duration, winnerCount, mode);
     });
 }
 async function handleMiniGames(channel, winners, prize, duration, winnerCount, mode) {
-    // === 1. MODE DOUBLE OR KEEP ===
     if (mode === 'dok') {
         const winnerId = winners[0];
         const doubleBtn = new ButtonBuilder().setCustomId('dok_double').setLabel('Double 🟢').setStyle(ButtonStyle.Success);
         const keepBtn = new ButtonBuilder().setCustomId('dok_keep').setLabel('Keep 🔴').setStyle(ButtonStyle.Danger);
         const gameRow = new ActionRowBuilder().addComponents(doubleBtn, keepBtn);
-
         const gameMsg = await channel.send({ content: `📢 <@${winnerId}>, choose your destiny! **Double** or **Keep**? 🧇`, components: [gameRow] });
         const gameColl = gameMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
-
         gameColl.on('collect', async (gInt) => {
             if (gInt.user.id !== winnerId) return gInt.reply({ content: "❌ Only the winner can choose!", ephemeral: true });
-            gameColl.stop();
-            doubleBtn.setDisabled(true); keepBtn.setDisabled(true);
+            gameColl.stop(); doubleBtn.setDisabled(true); keepBtn.setDisabled(true);
             await gameMsg.edit({ components: [new ActionRowBuilder().addComponents(doubleBtn, keepBtn)] });
-
-            if (gInt.customId === 'dok_keep') {
-                await gInt.reply(`🔒 **Giveaway Ended... KEEP!** <@${winnerId}> kept their **${prize}**! GG! 🧇🎁`);
-            } else {
+            if (gInt.customId === 'dok_keep') { await gInt.reply(`🔒 **Giveaway Ended... KEEP!** <@${winnerId}> kept their **${prize}**! GG! 🧇🎁`); } else {
                 let newPrize = prize; const match = prize.match(/\d+/);
-                if (match) { const oldN = parseInt(match[0]); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = `2x ${prize}`; }
+                if (match) { const oldN = parseInt(match); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = `2x ${prize}`; }
                 await gInt.reply(`🟢 **DOUBLE ACTIVATED!** New reward: **${newPrize}**! Re-rolling in 5s... 🚀`);
                 setTimeout(() => startGiveawayEngine(channel, duration, newPrize, winnerCount, 'dok'), 5000);
             }
         });
     }
-
-    // === 2. MODE SPLIT OR STEAL ===
     if (mode === 'sos') {
         const p1 = winners[0]; const p2 = winners[1];
         const splitBtn = new ButtonBuilder().setCustomId('sos_split').setLabel('Split 🟢').setStyle(ButtonStyle.Success);
         const stealBtn = new ButtonBuilder().setCustomId('sos_steal').setLabel('Steal 🔴').setStyle(ButtonStyle.Danger);
         const sosRow = new ActionRowBuilder().addComponents(splitBtn, stealBtn);
-
         const sosMsg = await channel.send({ content: `⚔️ <@${p1}> and <@${p2}>! You both won! Choose **Split** 🟢 or **Steal** 🔴!`, components: [sosRow] });
-        const choices = {};
-        const sosColl = sosMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
-
+        const choices = {}; const sosColl = sosMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
         sosColl.on('collect', async (sInt) => {
             if (sInt.user.id !== p1 && sInt.user.id !== p2) return sInt.reply({ content: "❌ You are not a winner!", ephemeral: true });
             if (choices[sInt.user.id]) return sInt.reply({ content: "⚠️ You already chose!", ephemeral: true });
-
-            choices[sInt.user.id] = sInt.customId.replace('sos_', '');
-            await sInt.reply({ content: `✅ Choice registered: **${choices[sInt.user.id]}**!`, ephemeral: true });
-
+            choices[sInt.user.id] = sInt.customId.replace('sos_', ''); await sInt.reply({ content: `✅ Choice registered!`, ephemeral: true });
             if (choices[p1] && choices[p2]) {
-                sosColl.stop();
-                splitBtn.setDisabled(true); stealBtn.setDisabled(true);
+                sosColl.stop(); splitBtn.setDisabled(true); stealBtn.setDisabled(true);
                 await sosMsg.edit({ components: [new ActionRowBuilder().addComponents(splitBtn, stealBtn)] });
-
-                if (choices[p1] === 'split' && choices[p2] === 'split') {
-                    channel.send(`🤝 **SPLIT!** <@${p1}> and <@${p2}> both chose Split! They share the prize: **${prize}**! 🎉`);
-                } else if (choices[p1] === 'steal' && choices[p2] === 'steal') {
-                    channel.send(`💀 **STEAL TO STEAL!** Both tried to steal. **NO ONE WINS** anything! The giveaway is canceled. ❌`);
-                } else {
-                    const thief = choices[p1] === 'steal' ? p1 : p2;
-                    const victim = choices[p1] === 'split' ? p1 : p2;
-                    channel.send(`😈 **BETRAYAL!** <@${thief}> stole everything! <@${victim}> gets nothing. <@${thief}> wins **${prize}**! 🏆`);
-                }
+                if (choices[p1] === 'split' && choices[p2] === 'split') { channel.send(`🤝 **SPLIT!** <@${p1}> and <@${p2}> share the prize: **${prize}**! 🎉`); }
+                else if (choices[p1] === 'steal' && choices[p2] === 'steal') { channel.send(`💀 **STEAL TO STEAL!** Both tried to steal. **NO ONE WINS**! ❌`); }
+                else { const thief = choices[p1] === 'steal' ? p1 : p2; channel.send(`😈 **BETRAYAL!** <@${thief}> stole everything and wins **${prize}**! 🏆`); }
             }
         });
     }
-
-    // === 3. MODE ROCK PAPER SCISSORS ===
     if (mode === 'rps') {
         const p1 = winners[0]; const p2 = winners[1];
         const rBtn = new ButtonBuilder().setCustomId('rps_rock').setLabel('🪨 Rock').setStyle(ButtonStyle.Secondary);
         const pBtn = new ButtonBuilder().setCustomId('rps_paper').setLabel('📄 Paper').setStyle(ButtonStyle.Primary);
         const sBtn = new ButtonBuilder().setCustomId('rps_scissors').setLabel('✂️ Scissors').setStyle(ButtonStyle.Danger);
         const rpsRow = new ActionRowBuilder().addComponents(rBtn, pBtn, sBtn);
-
         const rpsMsg = await channel.send({ content: `🪨📄✂️ <@${p1}> vs <@${p2}>! Battle for **${prize}**! Make your choice:`, components: [rpsRow] });
-        const rpsChoices = {};
-        const rpsColl = rpsMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 45000 });
-
+        const rpsChoices = {}; const rpsColl = rpsMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 45000 });
         rpsColl.on('collect', async (rInt) => {
             if (rInt.user.id !== p1 && rInt.user.id !== p2) return rInt.reply({ content: "❌ You are not in this battle!", ephemeral: true });
             if (rpsChoices[rInt.user.id]) return rInt.reply({ content: "⚠️ Choice already locked!", ephemeral: true });
-
-            rpsChoices[rInt.user.id] = rInt.customId.replace('rps_', '');
-            await rInt.reply({ content: `🔮 Choice locked! Waiting for opponent...`, ephemeral: true });
-
+            rpsChoices[rInt.user.id] = rInt.customId.replace('rps_', ''); await rInt.reply({ content: `🔮 Choice locked!`, ephemeral: true });
             if (rpsChoices[p1] && rpsChoices[p2]) {
-                rpsColl.stop();
-                rBtn.setDisabled(true); pBtn.setDisabled(true); sBtn.setDisabled(true);
+                rpsColl.stop(); rBtn.setDisabled(true); pBtn.setDisabled(true); sBtn.setDisabled(true);
                 await rpsMsg.edit({ components: [new ActionRowBuilder().addComponents(rBtn, pBtn, sBtn)] });
-
                 const c1 = rpsChoices[p1]; const c2 = rpsChoices[p2];
-                if (c1 === c2) {
-                    channel.send(`🤝 **DRAW!** Both chose **${c1}**. No one wins this time, battle ends! 🧇`);
-                } else if ((c1 === 'rock' && c2 === 'scissors') || (c1 === 'paper' && c2 === 'rock') || (c1 === 'scissors' && c2 === 'paper')) {
-                    channel.send(`👑 **VICTORY!** <@${p1}> (**${c1}**) beats <@${p2}> (**${c2}**) and wins **${prize}**! ✨`);
-                } else {
-                    channel.send(`👑 **VICTORY!** <@${p2}> (**${c2}**) beats <@${p1}> (**${c1}**) and wins **${prize}**! ✨`);
-                }
+                if (c1 === c2) { channel.send(`🤝 **DRAW!** Both chose **${c1}**. Battle ends in a tie! 🧇`); }
+                else if ((c1 === 'rock' && c2 === 'scissors') || (c1 === 'paper' && c2 === 'rock') || (c1 === 'scissors' && c2 === 'paper')) { channel.send(`👑 **VICTORY!** <@${p1}> wins **${prize}**! ✨`); }
+                else { channel.send(`👑 **VICTORY!** <@${p2}> wins **${prize}**! ✨`); }
             }
         });
     }
@@ -218,14 +179,11 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
 
 const express = require('express');
 const app = express();
-app.get('/', (req, res) => res.send('Active!'));
-app.listen(process.env.PORT || 3000);
-client.login(process.env.DISCORD_TOKEN);
 app.get('/', (req, res) => {
-    if (client && client.user) {
-        console.log(`📡 KeepAlive received! Bot status: ${client.user.presence.status}`);
-    }
+    if (client && client.user) { console.log(`📡 KeepAlive received! Bot status: ${client.user.presence.status}`); }
     res.send('Waffel\'s Giveaway is perfectly awake and running 24/7!');
 });
 app.listen(process.env.PORT || 3000);
+client.login(process.env.DISCORD_TOKEN);
+
 
