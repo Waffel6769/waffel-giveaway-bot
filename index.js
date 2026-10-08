@@ -221,4 +221,11 @@ const app = express();
 app.get('/', (req, res) => res.send('Active!'));
 app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
+app.get('/', (req, res) => {
+    if (client && client.user) {
+        console.log(`📡 KeepAlive received! Bot status: ${client.user.presence.status}`);
+    }
+    res.send('Waffel\'s Giveaway is perfectly awake and running 24/7!');
+});
+app.listen(process.env.PORT || 3000);
 
