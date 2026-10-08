@@ -61,6 +61,7 @@ client.on('messageCreate', async (message) => {
 async function handleModCommands(message, command, args) {
     const manageMessagesPerm = message.member.permissions.has(PermissionFlagsBits.ManageMessages);
     const banPerm = message.member.permissions.has(PermissionFlagsBits.BanMembers);
+    const manageRolesPerm = message.member.permissions.has(PermissionFlagsBits.ManageRoles);
 
     if (command === 'clear') {
         if (!manageMessagesPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
@@ -68,6 +69,23 @@ async function handleModCommands(message, command, args) {
         if (isNaN(amount) || amount < 1 || amount > 100) return message.channel.send("⚠️ Please provide a number between 1 and 100.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         await message.channel.bulkDelete(amount + 1, true).catch(() => null);
         return message.channel.send("🧹 Deleted messages.").then(m => setTimeout(() => m.delete().catch(() => null), 4000));
+    }
+
+    if (command === 'roleadd') {
+        setTimeout(() => message.delete().catch(() => null), 200);
+        if (!manageRolesPerm) return message.channel.send("❌ You don't have permission to manage roles.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        
+        const target = message.mentions.members.first();
+        const role = message.mentions.roles.first();
+        
+        if (!target || !role) return message.channel.send("⚠️ Usage: `?roleadd @member @role`").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        
+        try {
+            await target.roles.add(role);
+            return message.channel.send(`✅ The role **${role.name}** has been successfully added to **${target.user.tag}**.`);
+        } catch (e) {
+            return message.channel.send("❌ Unable to add role. Check role hierarchy and my permissions.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        }
     }
 
     if (!['to', 'rto', 'kick', 'ban', 'unban', 'warn'].includes(command)) return;
@@ -108,7 +126,6 @@ async function handleModCommands(message, command, args) {
         const timeArg = args[1]; const durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         let finalDuration = durationMs || (60 * 1000);
-        if (finalDuration < 60 * 1000) return message.channel.send("⚠️ Minimum timeout is 60s (1m).").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         await target.timeout(finalDuration, reason);
         return message.channel.send(`🤫 **${target.user.tag}** timed out for **${timeArg || '1m'}**. Reason: ${reason}`);
     }
@@ -122,6 +139,7 @@ async function handleModCommands(message, command, args) {
         if (durationMs) { setTimeout(async () => { await message.guild.members.unban(target.id).catch(() => null); message.channel.send(`🔓 **${target.user.tag}** temporary ban expired.`); }, durationMs); }
     }
 }
+
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand()) {
         const targetUser = interaction.options.getUser('target') || interaction.user;
@@ -166,7 +184,6 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ embeds: [embed] });
         }
     }
-
     if (interaction.isChatInputCommand() && interaction.commandName === 'gcreate') {
         const menu = new StringSelectMenuBuilder().setCustomId('select_waffel_mode').setPlaceholder('🎯 Choose a Giveaway Game Mode...')
             .addOptions(
@@ -203,6 +220,7 @@ client.on('interactionCreate', async (interaction) => {
         startGiveawayEngine(interaction.channel, duration, prize, winners, mode);
     }
 });
+
 async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) {
     const participants = [];
     const enterButton = new ButtonBuilder().setCustomId('enter_giveaway').setLabel('Join the Giveaway! 🎉').setStyle(ButtonStyle.Primary);
@@ -253,7 +271,6 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
         handleMiniGames(channel, winners, prize, duration, winnerCount, mode);
     });
 }
-
 async function handleMiniGames(channel, winners, prize, duration, winnerCount, mode) {
     if (mode === 'dok') {
         const winnerId = winners[0];
@@ -326,6 +343,3 @@ app.get('/', (req, res) => {
 });
 app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
-
-
-
