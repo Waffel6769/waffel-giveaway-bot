@@ -66,7 +66,7 @@ async function handleModCommands(message, command, args) {
 
     if (command === 'clear') {
         if (!manageMessagesPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        const amount = parseInt(args);
+        const amount = parseInt(args[0]);
         if (isNaN(amount) || amount < 1 || amount > 100) return message.channel.send("⚠️ Please provide a number between 1 and 100.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         await message.channel.bulkDelete(amount + 1, true).catch(() => null);
         return message.channel.send("🧹 Deleted messages.").then(m => setTimeout(() => m.delete().catch(() => null), 4000));
@@ -82,18 +82,13 @@ async function handleModCommands(message, command, args) {
         catch (e) { return message.channel.send("❌ Unable to add role. Check role hierarchy.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); }
     }
 
-    // Nouvelle commande ?unwarn @membre
     if (command === 'unwarn') {
         setTimeout(() => message.delete().catch(() => null), 200);
         if (!banPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
         if (!target) return message.channel.send("❌ Please mention a valid user or provide their ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        
-        if (!warnDatabase[target.id] || warnDatabase[target.id].length === 0) {
-            return message.channel.send(`✅ **${target.user.tag}** has no active warnings to remove.`);
-        }
-        
-        warnDatabase[target.id].pop(); // Supprime le tout dernier avertissement reçu
+        if (!warnDatabase[target.id] || warnDatabase[target.id].length === 0) { return message.channel.send(`✅ **${target.user.tag}** has no active warnings to remove.`); }
+        warnDatabase[target.id].pop();
         return message.channel.send(`🧹 Removed the latest warning from **${target.user.tag}** (Remaining: ${warnDatabase[target.id].length}).`);
     }
 
@@ -101,16 +96,11 @@ async function handleModCommands(message, command, args) {
     setTimeout(() => message.delete().catch(() => null), 200);
     if (!banPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
 
-    // Commande ?unban améliorée (accepte les ID)
     if (command === 'unban') {
         const userId = args[0];
         if (!userId) return message.channel.send("❌ Please provide a valid User ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        try { 
-            await message.guild.members.unban(userId); 
-            return message.channel.send(`🔓 **User ID (${userId})** has been successfully unbanned.`); 
-        } catch (e) { 
-            return message.channel.send("❌ User not found or is not currently banned.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); 
-        }
+        try { await message.guild.members.unban(userId); return message.channel.send(`🔓 **User ID (${userId})** has been successfully unbanned.`); } 
+        catch (e) { return message.channel.send("❌ User not found or is not currently banned.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); }
     }
 
     const target = message.mentions.members.first();
@@ -128,7 +118,7 @@ async function handleModCommands(message, command, args) {
 
     function parseDuration(str) {
         if (!str) return null; const match = str.match(/^(\d+)(s|m|h|d)/i); if (!match) return null;
-        const val = parseInt(match); const unit = match.toLowerCase();
+        const val = parseInt(match[1]); const unit = match[2].toLowerCase();
         if (unit === 's') return val * 1000; if (unit === 'm') return val * 60 * 1000;
         if (unit === 'h') return val * 60 * 60 * 1000; if (unit === 'd') return val * 24 * 60 * 60 * 1000;
         return null;
@@ -137,7 +127,7 @@ async function handleModCommands(message, command, args) {
     if (command === 'rto') { await target.timeout(null); return message.channel.send(`🗣️ **${target.user.tag}** timeout removed!`); }
 
     if (command === 'to') {
-        const timeArg = args; const durationMs = parseDuration(timeArg);
+        const timeArg = args[1]; const durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         let finalDuration = durationMs || (60 * 1000);
         await target.timeout(finalDuration, reason);
@@ -147,7 +137,7 @@ async function handleModCommands(message, command, args) {
     if (command === 'kick') { const reason = args.slice(1).join(' ') || "No reason provided"; await target.kick(reason); return message.channel.send(`👢 **${target.user.tag}** kicked. Reason: ${reason}`); }
 
     if (command === 'ban') {
-        const timeArg = args; const durationMs = parseDuration(timeArg);
+        const timeArg = args[1]; const durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         await target.ban({ reason }); message.channel.send(`🔨 **${target.user.tag}** banned. Reason: ${reason}`);
         if (durationMs) { setTimeout(async () => { await message.guild.members.unban(target.id).catch(() => null); message.channel.send(`🔓 **${target.user.tag}** temporary ban expired.`); }, durationMs); }
@@ -164,8 +154,8 @@ client.on('interactionCreate', async (interaction) => {
                 .setColor('#F39C12')
                 .setDescription('Here is a complete list of all the features integrated into this bot:')
                 .addFields(
-                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends the official W Jamal frog image\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/userinfo` - Shows official profile insights of a user\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches the full-size profile avatar of a member\n`/infractions` - Displays moderation warning history' },
-                    { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending for everyone\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes chat messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system (e.g., 45s, 10s, 5m)\n`?rto @member` - Removes an active timeout from a member\n`?warn @member <reason>` - Logs a moderation warning\n`?kick @member` - Kicks a user from the server\n`?ban @member <duration>` - Bans a user temporarily' },
+                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/userinfo` - Shows official profile insights of a user\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches the full-size profile avatar of a member\n`/infractions` - Displays moderation warning history' },
+                    { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending for everyone\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes chat messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system (e.g., 45s, 10s, 5m)\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a moderation warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID' },
                     { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway in the channel.' }
                 )
                 .setFooter({ text: `Waffel's Giveaway Utility` });
@@ -173,11 +163,15 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         if (interaction.commandName === 'wjamal') {
-            // L'embed utilise maintenant directement l'image de la grenouille citrouille que vous m'avez fournie
-            const embed = new EmbedBuilder()
-                .setTitle('🐸 W JAMAL')
-                .setColor('#2ECC71')
-                .setImage('https://prodia.xyz'); // Lien direct hébergé de votre image
+            const frogGifs = [
+                'https://giphy.com',
+                'https://giphy.com',
+                'https://giphy.com',
+                'https://giphy.com',
+                'https://giphy.com'
+            ];
+            const randomFrog = frogGifs[Math.floor(Math.random() * frogGifs.length)];
+            const embed = new EmbedBuilder().setTitle('🐸 W JAMAL').setColor('#2ECC71').setImage(randomFrog);
             return interaction.reply({ embeds: [embed] });
         }
 
@@ -221,6 +215,7 @@ client.on('interactionCreate', async (interaction) => {
         const menu = new StringSelectMenuBuilder().setCustomId('select_waffel_mode').setPlaceholder('🎯 Choose a Giveaway Game Mode...')
             .addOptions(
                 new StringSelectMenuOptionBuilder().setLabel('Normal Mode').setDescription('Classic giveaway.').setValue('normal').setEmoji('🎉'),
+                new StringSelectMenuOptionBuilder().setLabel('Waffle Clicker').setDescription('First one to click the button wins instantly! 🧇').setValue('clicker').setEmoji('⚡'),
                 new StringSelectMenuOptionBuilder().setLabel('Double Or Keep (DoK)').setDescription('Keep or double and reroll!').setValue('dok').setEmoji('🟢'),
                 new StringSelectMenuOptionBuilder().setLabel('Split Or Steal (SoS)').setDescription('Share or betray?').setValue('sos').setEmoji('⚔️'),
                 new StringSelectMenuOptionBuilder().setLabel('Rock Paper Scissors (RPS)').setDescription('RPS Battle!').setValue('rps').setEmoji('🪨')
@@ -233,10 +228,14 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
         const mode = interaction.values[0];
         const modal = new ModalBuilder().setCustomId(`modal_waffel_${mode}`).setTitle(`Setup: ${mode.toUpperCase()} Mode 🧇`);
-        const pInput = new TextInputBuilder().setCustomId('input_prize').setLabel("What is the prize?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 2 Waffles").setRequired(true);
+        const pInput = new TextInputBuilder().setCustomId('input_prize').setLabel("What is the prize?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 50k Coins / Waffles").setRequired(true);
         const dInput = new TextInputBuilder().setCustomId('input_duration').setLabel("Duration (in minutes):").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 5").setRequired(true);
         const wInput = new TextInputBuilder().setCustomId('input_winners').setLabel("Number of winners:").setStyle(TextInputStyle.Short).setRequired(true);
-        if (mode === 'sos' || mode === 'rps') { wInput.setPlaceholder("Must be 2").setValue("2"); } else { wInput.setPlaceholder("e.g., 1").setValue("1"); }
+        
+        if (mode === 'sos' || mode === 'rps') { wInput.setPlaceholder("Must be 2").setValue("2"); } 
+        else if (mode === 'clicker') { wInput.setPlaceholder("Must be 1").setValue("1").setRequired(false); }
+        else { wInput.setPlaceholder("e.g., 1").setValue("1"); }
+        
         modal.addComponents(new ActionRowBuilder().addComponents(pInput), new ActionRowBuilder().addComponents(dInput), new ActionRowBuilder().addComponents(wInput));
         await interaction.showModal(modal);
     }
@@ -249,6 +248,8 @@ client.on('interactionCreate', async (interaction) => {
         if (isNaN(duration) || duration <= 0) return interaction.reply({ content: "❌ Invalid duration.", ephemeral: true });
         if (isNaN(winners) || winners <= 0) winners = 1;
         if ((mode === 'sos' || mode === 'rps') && winners !== 2) return interaction.reply({ content: "❌ Requires exactly 2 winners.", ephemeral: true });
+        if (mode === 'clicker') winners = 1;
+        
         await interaction.reply({ content: `✅ Successfully created your ${mode.toUpperCase()} giveaway!`, ephemeral: true });
         startGiveawayEngine(interaction.channel, duration, prize, winners, mode);
     }
@@ -256,38 +257,60 @@ client.on('interactionCreate', async (interaction) => {
 
 async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) {
     const participants = [];
-    const enterButton = new ButtonBuilder().setCustomId('enter_giveaway').setLabel('Join the Giveaway! 🎉').setStyle(ButtonStyle.Primary);
+    const buttonLabel = mode === 'clicker' ? 'CLICK ME TO WIN! 🧇⚡' : 'Join the Giveaway! 🎉';
+    const buttonStyle = mode === 'clicker' ? ButtonStyle.Success : ButtonStyle.Primary;
+    const enterButton = new ButtonBuilder().setCustomId('enter_giveaway').setLabel(buttonLabel).setStyle(buttonStyle);
     const row = new ActionRowBuilder().addComponents(enterButton);
+    
     let title = "WAFFEL'S GIVEAWAY";
+    if (mode === 'clicker') title = "WAFFEL'S WAFFLE CLICKER ⚡";
     if (mode === 'dok') title = "WAFFEL'S GIVEAWAY (DOUBLE OR KEEP 🟢)";
     if (mode === 'sos') title = "WAFFEL'S GIVEAWAY (SPLIT OR STEAL ⚔️)";
     if (mode === 'rps') title = "WAFFEL'S GIVEAWAY (ROCK PAPER SCISSORS 🪨)";
 
-    const embed = new EmbedBuilder().setTitle(`✨ 🧇 ${title} 🧇 ✨`)
-        .setDescription(`🎁 **Prize:** ${prize}\n👑 **Winners:** ${winnerCount}\n\n📢 **How to enter:** Click the button below to join!\n⏳ **Time Remaining:** <t:${Math.floor((Date.now() + duration * 60 * 1000) / 1000)}:R>`)
-        .setColor('#F39C12').setFooter({ text: `👥 Participants: 0 | 🌟 Mode: ${mode.toUpperCase()}` }).setTimestamp();
+    let description = `🎁 **Prize:** ${prize}\n👑 **Winners:** ${winnerCount}\n\n📢 **How to enter:** Click the button below to join!\n⏳ **Time Remaining:** <t:${Math.floor((Date.now() + duration * 60 * 1000) / 1000)}:R>`;
+    if (mode === 'clicker') { description = `🎁 **Prize:** ${prize}\n\n🚨 **SPEED GAME:** The very **FIRST** person to click the big green button below wins the prize instantly! Get ready! ⚡`; }
 
+    const embed = new EmbedBuilder().setTitle(`✨ 🧇 ${title} 🧇 ✨`).setDescription(description).setColor(mode === 'clicker' ? '#2ECC71' : '#F39C12').setFooter({ text: `👥 Participants: 0 | 🌟 Mode: ${mode.toUpperCase()}` }).setTimestamp();
     const msg = await channel.send({ embeds: [embed], components: [row] });
-    const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: duration * 60 * 1000 });
+    
+    const maxEntries = mode === 'clicker' ? 1 : undefined;
+    const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: duration * 60 * 1000, max: maxEntries });
 
     collector.on('collect', async (btnInt) => {
         if (btnInt.customId !== 'enter_giveaway') return;
-        if (participants.includes(btnInt.user.id)) return btnInt.reply({ content: "⚠️ Already in!", ephemeral: true });
-        participants.push(btnInt.user.id);
-        const upEmbed = EmbedBuilder.from(embed).setFooter({ text: `👥 Participants: ${participants.length} | 🌟 Mode: ${mode.toUpperCase()}` });
-        await btnInt.update({ embeds: [upEmbed] });
-        await btnInt.followUp({ content: "✅ Successfully entered!", ephemeral: true });
+        if (mode === 'clicker') {
+            participants.push(btnInt.user.id);
+            await btnInt.reply({ content: "🧇 CRITICAL CLICK! Checking if you were the fastest...", ephemeral: true });
+            collector.stop();
+        } else {
+            if (participants.includes(btnInt.user.id)) return btnInt.reply({ content: "⚠️ Already in!", ephemeral: true });
+            participants.push(btnInt.user.id);
+            const upEmbed = EmbedBuilder.from(embed).setFooter({ text: `👥 Participants: ${participants.length} | 🌟 Mode: ${mode.toUpperCase()}` });
+            await btnInt.update({ embeds: [upEmbed] });
+            await btnInt.followUp({ content: "✅ Successfully entered!", ephemeral: true });
+        }
     });
 
     collector.on('end', async () => {
-        enterButton.setDisabled(true).setLabel('Giveaway Closed 🔒').setStyle(ButtonStyle.Secondary);
+        enterButton.setDisabled(true).setLabel(mode === 'clicker' ? 'Waffle Clicked! 🔒' : 'Giveaway Closed 🔒').setStyle(ButtonStyle.Secondary);
         const disRow = new ActionRowBuilder().addComponents(enterButton);
         const endMsg = await channel.messages.fetch(msg.id).catch(() => null);
         if (!endMsg) return;
 
-        if (participants.length === 0) { participants.push('266277684074217472'); }
-        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants[0]); }
+        if (participants.length === 0) {
+            const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎁 **Prize:** ${prize}\n\n❌ **Waffle Clicker Ended:** No one clicked in time.`);
+            return await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
+        }
 
+        if (mode === 'clicker') {
+            const winnerId = participants[0];
+            const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎁 **Prize:** ${prize}\n\n⚡ **CLICKER OVER!**\n👑 **Fastest Clicker:** <@${winnerId}>`);
+            await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
+            return await channel.send(`⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@${winnerId}>, you reacted the fastest and won **${prize}**! 🎉🏆`);
+        }
+
+        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants[0]); }
         if (participants.length < winnerCount) {
             const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎁 **Prize:** ${prize}\n\n❌ **Giveaway Ended:** Not enough participants.`);
             return await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
@@ -305,6 +328,8 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
     });
 }
 async function handleMiniGames(channel, winners, prize, duration, winnerCount, mode) {
+    if (mode === 'clicker') return;
+    
     if (mode === 'dok') {
         const winnerId = winners[0];
         const doubleBtn = new ButtonBuilder().setCustomId('dok_double').setLabel('Double 🟢').setStyle(ButtonStyle.Success);
