@@ -5,6 +5,7 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBit
 
 const warnDatabase = {}; 
 
+// Liste mise à jour de vos commandes Slash incluant /help et /wjamal
 const commands = [
     new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
     new SlashCommandBuilder().setName('userinfo').setDescription('Display official profile information about a user 👤')
@@ -13,7 +14,9 @@ const commands = [
     new SlashCommandBuilder().setName('avatar').setDescription('Get the full size avatar of a member 🖼️')
         .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
     new SlashCommandBuilder().setName('infractions').setDescription('View the moderation history and warnings of a user 📜')
-        .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false))
+        .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
+    new SlashCommandBuilder().setName('help').setDescription('Afficher la liste de toutes les commandes disponibles du bot 📋'),
+    new SlashCommandBuilder().setName('wjamal').setDescription('Envoyer un GIF de grenouille totalement aléatoire 🐸')
 ].map(cmd => cmd.toJSON());
 
 client.once('ready', async () => {
@@ -139,11 +142,42 @@ async function handleModCommands(message, command, args) {
         if (durationMs) { setTimeout(async () => { await message.guild.members.unban(target.id).catch(() => null); message.channel.send(`🔓 **${target.user.tag}** temporary ban expired.`); }, durationMs); }
     }
 }
-
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand()) {
         const targetUser = interaction.options.getUser('target') || interaction.user;
         const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+
+        // Nouvelle commande Slash /help
+        if (interaction.commandName === 'help') {
+            const embed = new EmbedBuilder()
+                .setTitle('📋 Liste des commandes disponibles')
+                .setColor('#F39C12')
+                .setDescription('Voici l\'inventaire complet de toutes les fonctionnalités du bot :')
+                .addFields(
+                    { name: '✨ Commandes Slash (/)', value: '`/help` - Affiche ce menu\n`/wjamal` - Envoie un GIF de grenouille aléatoire\n`/gcreate` - Ouvre le configurateur de Giveaway\n`/userinfo` - Infos sur un utilisateur\n`/serverinfo` - Stats du serveur\n`/avatar` - Profil d\'un membre\n`/infractions` - Historique des avertissements' },
+                    { name: '🛠️ Commandes Textuelles (?)', value: '`?lock` - Ferme le salon actuel\n`?unlock` - Réouvre le salon\n`?clear <nb>` - Supprime des messages\n`?roleadd @membre @role` - Ajoute un rôle\n`?to @membre <temps>` - Applique un timeout (ex: 45s, 10s, 5m)\n`?rto @membre` - Retire un timeout\n`?warn @membre <raison>` - Met un avertissement\n`?kick @membre` - Expulse un membre\n`?ban @membre <temps>` - Bannit un membre' },
+                    { name: '🎉 Système Automatique (!)', value: '`!gstart <minutes> <prix>` - Lance un giveaway classique instantanément.' }
+                )
+                .setFooter({ text: `Waffel's Giveaway Utility` });
+            return interaction.reply({ embeds: [embed] });
+        }
+
+        // Nouvelle commande Slash /wjamal (Grenouilles aléatoires)
+        if (interaction.commandName === 'wjamal') {
+            const frogGifs = [
+                'https://giphy.com',
+                'https://giphy.com',
+                'https://giphy.com',
+                'https://giphy.com',
+                'https://giphy.com'
+            ];
+            const randomFrog = frogGifs[Math.floor(Math.random() * frogGifs.length)];
+            const embed = new EmbedBuilder()
+                .setTitle('🐸 Un Jamal sauvage apparaît !')
+                .setColor('#2ECC71')
+                .setImage(randomFrog);
+            return interaction.reply({ embeds: [embed] });
+        }
 
         if (interaction.commandName === 'userinfo') {
             const embed = new EmbedBuilder().setTitle(`👤 User Info - ${targetUser.tag}`).setColor('#F39C12').setThumbnail(targetUser.displayAvatarURL())
@@ -302,7 +336,7 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
             if (sInt.user.id !== p1 && sInt.user.id !== p2) return sInt.reply({ content: "❌ You are not a winner!", ephemeral: true });
             if (choices[sInt.user.id]) return sInt.reply({ content: "⚠️ You already chose!", ephemeral: true });
             choices[sInt.user.id] = sInt.customId.replace('sos_', ''); await sInt.reply({ content: `✅ Choice registered!`, ephemeral: true });
-            if (choices[p1] && choices[p2]) {
+            if (choices[p1] && choices[choices[p2]]) {
                 sosColl.stop(); splitBtn.setDisabled(true); stealBtn.setDisabled(true);
                 await sosMsg.edit({ components: [new ActionRowBuilder().addComponents(splitBtn, stealBtn)] });
                 if (choices[p1] === 'split' && choices[p2] === 'split') { channel.send(`🤝 **SPLIT!** <@${p1}> and <@${p2}> share the prize: **${prize}**! 🎉`); }
