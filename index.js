@@ -6,7 +6,7 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBit
 const warnDatabase = {}; 
 
 const commands = [
-    new SlashCommandBuilder().setName('gcreate').setDescription('Open the interactive menu to create a giveaway 🧇'),
+    new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
     new SlashCommandBuilder().setName('userinfo').setDescription('Display official profile information about a user 👤')
         .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Display key statistics about this server 📊'),
@@ -102,7 +102,7 @@ async function handleModCommands(message, command, args) {
         return null;
     }
 
-    if (command === 'rto') { await target.timeout(null); return message.channel.send(`🔊 **${target.user.tag}** timeout removed!`); }
+    if (command === 'rto') { await target.timeout(null); return message.channel.send(`🗣️ **${target.user.tag}** timeout removed!`); }
 
     if (command === 'to') {
         const timeArg = args[1]; const durationMs = parseDuration(timeArg);
