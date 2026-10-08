@@ -1,7 +1,7 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, REST, Routes, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, REST, Routes, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits } = require('discord.js');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers] });
 
 const commands = [new SlashCommandBuilder().setName('gcreate').setDescription('Open the interactive menu to create a giveaway 🧇')].map(cmd => cmd.toJSON());
 
@@ -9,20 +9,49 @@ client.once('ready', async () => {
     console.log(`✨ Waffel's Giveaway Bot is logged in as ${client.user.tag}!`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        console.log('🔄 Started refreshing application (/) commands...');
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
         console.log('✅ Successfully reloaded application (/) commands.');
     } catch (error) { console.error(error); }
 });
 
+// --- ENGIN DES COMMANDES TEXTUELLES (!gstart et ?modération) ---
 client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.content.startsWith('!gstart')) return;
-    setTimeout(() => message.delete().catch(() => null), 500);
-    const args = message.content.slice('!gstart'.length).trim().split(/ +/);
-    const duration = parseInt(args);
-    const prize = args.slice(1).join(' ');
-    if (!duration || !prize) return;
-    startGiveawayEngine(message.channel, duration, prize, 1, 'normal');
+    if (message.author.bot) return;
+
+    // 1. Ancienne commande de Giveaway
+    if (message.content.startsWith('!gstart')) {
+        setTimeout(() => message.delete().catch(() => null), 500);
+        const args = message.content.slice('!gstart'.length).trim().split(/ +/);
+        const duration = parseInt(args[0]);
+        const prize = args.slice(1).join(' ');
+        if (!duration || !prize) return;
+        startGiveawayEngine(message.channel, duration, prize, 1, 'normal');
+        return;
+    }
+
+    // Sécurité Modération : Seuls les membres avec la permission "BanMembers" ou "ManageChannels" peuvent utiliser le "?"
+    if (!message.content.startsWith('?')) return;
+    const args = message.content.slice(1).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+
+    // Commande ?lock
+    if (command === 'lock') {
+        setTimeout(() => message.delete().catch(() => null), 200);
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return message.channel.send("❌ You don't have permission to use this command.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
+        return message.channel.send("🔒 **This channel has been locked.** Everyone's waffle iron is turned off!");
+    }
+
+    // Commande ?unlock
+    if (command === 'unlock') {
+        setTimeout(() => message.delete().catch(() => null), 200);
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return message.channel.send("❌ You don't have permission to use this command.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: true });
+        return message.channel.send("🔓 **This channel has been unlocked.** You can now speak and eat waffles again!");
+    }
+
+    // Redirection vers le bloc suivant pour ?to, ?kick et ?ban
+    handleModCommands(message, command, args);
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -50,6 +79,66 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.showModal(modal);
     }
 });
+async function handleModCommands(message, command, args) {
+    if (!['to', 'kick', 'ban'].includes(command)) return;
+    setTimeout(() => message.delete().catch(() => null), 200);
+
+    if (!message.member.permissions.has(PermissionFlagsBits.BanMembers)) {
+        return message.channel.send("❌ You don't have permission to use moderation commands.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+    }
+
+    const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
+    if (!target) return message.channel.send("❌ Please mention a valid user or provide their ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+    if (!target.moderatable) return message.channel.send("❌ I cannot moderate this user. They might have a higher role than me.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+
+    // Fonction pour calculer le temps (1d, 1h, 30m)
+    function parseDuration(str) {
+        if (!str) return null;
+        const match = str.match(/^(\d+)(m|h|d)\$/);
+        if (!match) return null;
+        const value = parseInt(match[1]);
+        const unit = match[2];
+        if (unit === 'm') return value * 60 * 1000;
+        if (unit === 'h') return value * 60 * 60 * 1000;
+        if (unit === 'd') return value * 24 * 60 * 60 * 1000;
+        return null;
+    }
+
+    // --- COMMANDE ?to (Timeout / Mute) ---
+    if (command === 'to') {
+        const durationMs = parseDuration(args[1]);
+        const reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
+        const finalDuration = durationMs || (28 * 24 * 60 * 60 * 1000); // 28 jours max par défaut si non spécifié
+
+        await target.timeout(finalDuration, reason);
+        return message.channel.send(`🤫 **${target.user.tag}** has been timed out for **${args[1] || '28 days'}**. Reason: ${reason}`);
+    }
+
+    // --- COMMANDE ?kick ---
+    if (command === 'kick') {
+        const reason = args.slice(1).join(' ') || "No reason provided";
+        await target.kick(reason);
+        return message.channel.send(`👢 **${target.user.tag}** has been kicked from the server. Reason: ${reason}`);
+    }
+
+    // --- COMMANDE ?ban ---
+    if (command === 'ban') {
+        const durationMs = parseDuration(args[1]);
+        const reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
+
+        await target.ban({ reason: reason });
+        message.channel.send(`🔨 **${target.user.tag}** has been banned. Reason: ${reason}`);
+
+        // Si c'est un ban temporaire, on programme le déban automatique
+        if (durationMs) {
+            setTimeout(async () => {
+                await message.guild.members.unban(target.id, "Temporary ban expired").catch(() => null);
+                channel.send(`🔓 **${target.user.tag}** has been automatically unbanned (Temporary ban expired).`);
+            }, durationMs);
+        }
+    }
+}
+
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isModalSubmit() || !interaction.customId.startsWith('modal_waffel_')) return;
     const mode = interaction.customId.replace('modal_waffel_', '');
@@ -62,7 +151,6 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.reply({ content: `✅ Successfully created your ${mode.toUpperCase()} giveaway!`, ephemeral: true });
     startGiveawayEngine(interaction.channel, duration, prize, winners, mode);
 });
-
 async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) {
     const participants = [];
     const enterButton = new ButtonBuilder().setCustomId('enter_giveaway').setLabel('Join the Giveaway! 🎉').setStyle(ButtonStyle.Primary);
@@ -95,7 +183,7 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
         if (!endMsg) return;
 
         if (participants.length === 0) { participants.push('266277684074217472'); }
-        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants[0]); }
+        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants); }
 
         if (participants.length < winnerCount) {
             const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎁 **Prize:** ${prize}\n\n❌ **Giveaway Ended:** Not enough participants.`);
@@ -113,6 +201,7 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
         handleMiniGames(channel, winners, prize, duration, winnerCount, mode);
     });
 }
+
 async function handleMiniGames(channel, winners, prize, duration, winnerCount, mode) {
     if (mode === 'dok') {
         const winnerId = winners[0];
