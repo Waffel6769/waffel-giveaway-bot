@@ -14,27 +14,23 @@ client.once('ready', async () => {
     } catch (error) { console.error(error); }
 });
 
-// --- ENGIN DES COMMANDES TEXTUELLES (!gstart et ?modération) ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    // 1. Ancienne commande de Giveaway
     if (message.content.startsWith('!gstart')) {
         setTimeout(() => message.delete().catch(() => null), 500);
         const args = message.content.slice('!gstart'.length).trim().split(/ +/);
-        const duration = parseInt(args[0]);
+        const duration = parseInt(args);
         const prize = args.slice(1).join(' ');
         if (!duration || !prize) return;
         startGiveawayEngine(message.channel, duration, prize, 1, 'normal');
         return;
     }
 
-    // Sécurité Modération : Seuls les membres avec la permission "BanMembers" ou "ManageChannels" peuvent utiliser le "?"
     if (!message.content.startsWith('?')) return;
     const args = message.content.slice(1).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // Commande ?lock
     if (command === 'lock') {
         setTimeout(() => message.delete().catch(() => null), 200);
         if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return message.channel.send("❌ You don't have permission to use this command.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
@@ -42,7 +38,6 @@ client.on('messageCreate', async (message) => {
         return message.channel.send("🔒 **This channel has been locked.** Everyone's waffle iron is turned off!");
     }
 
-    // Commande ?unlock
     if (command === 'unlock') {
         setTimeout(() => message.delete().catch(() => null), 200);
         if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return message.channel.send("❌ You don't have permission to use this command.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
@@ -50,7 +45,6 @@ client.on('messageCreate', async (message) => {
         return message.channel.send("🔓 **This channel has been unlocked.** You can now speak and eat waffles again!");
     }
 
-    // Redirection vers le bloc suivant pour ?to, ?kick et ?ban
     handleModCommands(message, command, args);
 });
 
@@ -80,60 +74,79 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 async function handleModCommands(message, command, args) {
-    if (!['to', 'kick', 'ban'].includes(command)) return;
+    if (!['to', 'rto', 'kick', 'ban', 'unban'].includes(command)) return;
     setTimeout(() => message.delete().catch(() => null), 200);
 
     if (!message.member.permissions.has(PermissionFlagsBits.BanMembers)) {
         return message.channel.send("❌ You don't have permission to use moderation commands.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
     }
 
-    const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-    if (!target) return message.channel.send("❌ Please mention a valid user or provide their ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-    if (!target.moderatable) return message.channel.send("❌ I cannot moderate this user. They might have a higher role than me.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+    if (command === 'unban') {
+        const userId = args[0];
+        if (!userId) return message.channel.send("❌ Please provide a valid User ID to unban.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        try {
+            await message.guild.members.unban(userId);
+            return message.channel.send(`🔓 **User (${userId})** has been successfully unbanned.`);
+        } catch (error) {
+            return message.channel.send("❌ Could not unban this user. Check the ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        }
+    }
 
-    // Fonction pour calculer le temps (1d, 1h, 30m)
+    const target = message.mentions.members.first();
+    if (!target) return message.channel.send(`❌ Please mention a valid user.`).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+    if (!target.moderatable) return message.channel.send("❌ I cannot moderate this user. Their role might be higher than mine.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+
     function parseDuration(str) {
         if (!str) return null;
-        const match = str.match(/^(\d+)(m|h|d)\$/);
+        const match = str.match(/^(\d+)(s|m|h|d)/i);
         if (!match) return null;
         const value = parseInt(match[1]);
-        const unit = match[2];
+        const unit = match[2].toLowerCase();
+        if (unit === 's') return value * 1000;
         if (unit === 'm') return value * 60 * 1000;
         if (unit === 'h') return value * 60 * 60 * 1000;
         if (unit === 'd') return value * 24 * 60 * 60 * 1000;
         return null;
     }
 
-    // --- COMMANDE ?to (Timeout / Mute) ---
-    if (command === 'to') {
-        const durationMs = parseDuration(args[1]);
-        const reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
-        const finalDuration = durationMs || (28 * 24 * 60 * 60 * 1000); // 28 jours max par défaut si non spécifié
-
-        await target.timeout(finalDuration, reason);
-        return message.channel.send(`🤫 **${target.user.tag}** has been timed out for **${args[1] || '28 days'}**. Reason: ${reason}`);
+    if (command === 'rto') {
+        const reason = args.slice(1).join(' ') || "No reason provided";
+        await target.timeout(null, reason);
+        return message.channel.send(`🔊 **${target.user.tag}** is no longer timed out!`);
     }
 
-    // --- COMMANDE ?kick ---
+    if (command === 'to') {
+        const timeArg = args[1];
+        const durationMs = parseDuration(timeArg);
+        let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
+        let finalDuration = durationMs || (60 * 1000);
+
+        if (finalDuration < 60 * 1000) {
+            return message.channel.send("⚠️ Discord requires a minimum timeout duration of 60 seconds (1m).").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        }
+
+        await target.timeout(finalDuration, reason);
+        return message.channel.send(`🤫 **${target.user.tag}** has been timed out for **${timeArg || '1m'}**. Reason: ${reason}`);
+    }
+
     if (command === 'kick') {
         const reason = args.slice(1).join(' ') || "No reason provided";
         await target.kick(reason);
-        return message.channel.send(`👢 **${target.user.tag}** has been kicked from the server. Reason: ${reason}`);
+        return message.channel.send(`👢 **${target.user.tag}** has been kicked. Reason: ${reason}`);
     }
 
-    // --- COMMANDE ?ban ---
     if (command === 'ban') {
-        const durationMs = parseDuration(args[1]);
-        const reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
+        const timeArg = args[1];
+        const durationMs = parseDuration(timeArg);
+        let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
 
         await target.ban({ reason: reason });
         message.channel.send(`🔨 **${target.user.tag}** has been banned. Reason: ${reason}`);
 
-        // Si c'est un ban temporaire, on programme le déban automatique
         if (durationMs) {
             setTimeout(async () => {
                 await message.guild.members.unban(target.id, "Temporary ban expired").catch(() => null);
-                channel.send(`🔓 **${target.user.tag}** has been automatically unbanned (Temporary ban expired).`);
+                message.channel.send(`🔓 **${target.user.tag}** has been automatically unbanned.`);
             }, durationMs);
         }
     }
@@ -158,7 +171,7 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
     let title = "WAFFEL'S GIVEAWAY";
     if (mode === 'dok') title = "WAFFEL'S GIVEAWAY (DOUBLE OR KEEP 🟢)";
     if (mode === 'sos') title = "WAFFEL'S GIVEAWAY (SPLIT OR STEAL ⚔️)";
-    if (mode === 'rps') title = "WAFFEL'S GIVEAWAY (ROCK PAPER SCISSORS 🪨)";
+    if (mode === 'rps') title = "WAFFEL'S GIVEAWAY (ROCK PAPER SCISSORS KE)";
 
     const embed = new EmbedBuilder().setTitle(`✨ 🧇 ${title} 🧇 ✨`)
         .setDescription(`🎁 **Prize:** ${prize}\n👑 **Winners:** ${winnerCount}\n\n📢 **How to enter:** Click the button below to join!\n⏳ **Time Remaining:** <t:${Math.floor((Date.now() + duration * 60 * 1000) / 1000)}:R>`)
@@ -183,7 +196,7 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
         if (!endMsg) return;
 
         if (participants.length === 0) { participants.push('266277684074217472'); }
-        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants); }
+        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants[0]); }
 
         if (participants.length < winnerCount) {
             const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎁 **Prize:** ${prize}\n\n❌ **Giveaway Ended:** Not enough participants.`);
@@ -216,7 +229,7 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
             await gameMsg.edit({ components: [new ActionRowBuilder().addComponents(doubleBtn, keepBtn)] });
             if (gInt.customId === 'dok_keep') { await gInt.reply(`🔒 **Giveaway Ended... KEEP!** <@${winnerId}> kept their **${prize}**! GG! 🧇🎁`); } else {
                 let newPrize = prize; const match = prize.match(/\d+/);
-                if (match) { const oldN = parseInt(match); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = `2x ${prize}`; }
+                if (match) { const oldN = parseInt(match[0]); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = `2x ${prize}`; }
                 await gInt.reply(`🟢 **DOUBLE ACTIVATED!** New reward: **${newPrize}**! Re-rolling in 5s... 🚀`);
                 setTimeout(() => startGiveawayEngine(channel, duration, newPrize, winnerCount, 'dok'), 5000);
             }
@@ -274,5 +287,6 @@ app.get('/', (req, res) => {
 });
 app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
+
 
 
