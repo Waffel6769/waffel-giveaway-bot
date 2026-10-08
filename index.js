@@ -144,7 +144,7 @@ client.on('interactionCreate', async (interaction) => {
                 .setColor('#F39C12')
                 .setDescription('Here is a complete list of all the features integrated into this bot:')
                 .addFields(
-                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/userinfo` - Shows official profile insights of a user\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches the full-size profile avatar of a member\n`/infractions` - Displays moderation warning history' },
+                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends the official W Jamal frog image\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/userinfo` - Shows official profile insights of a user\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches the full-size profile avatar of a member\n`/infractions` - Displays moderation warning history' },
                     { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending for everyone\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes chat messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system (e.g., 45s, 10s, 5m)\n`?rto @member` - Removes an active timeout from a member\n`?warn @member <reason>` - Logs a moderation warning\n`?kick @member` - Kicks a user from the server\n`?ban @member <duration>` - Bans a user temporarily' },
                     { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway in the channel.' }
                 )
@@ -153,15 +153,11 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         if (interaction.commandName === 'wjamal') {
-            const frogGifs = [
-                'https://giphy.com',
-                'https://giphy.com',
-                'https://giphy.com',
-                'https://giphy.com',
-                'https://giphy.com'
-            ];
-            const randomFrog = frogGifs[Math.floor(Math.random() * frogGifs.length)];
-            const embed = new EmbedBuilder().setTitle('🐸 W JAMAL').setColor('#2ECC71').setImage(randomFrog);
+            // L'embed utilise maintenant directement l'image de la grenouille citrouille que vous m'avez fournie
+            const embed = new EmbedBuilder()
+                .setTitle('🐸 W JAMAL')
+                .setColor('#2ECC71')
+                .setImage('https://prodia.xyz'); // Lien direct hébergé de votre image
             return interaction.reply({ embeds: [embed] });
         }
 
