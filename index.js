@@ -15,7 +15,8 @@ const commands = [
     new SlashCommandBuilder().setName('infractions').setDescription('View the moderation history and warnings of a user 📜')
         .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
     new SlashCommandBuilder().setName('help').setDescription('Display the list of all available bot commands 📋'),
-    new SlashCommandBuilder().setName('wjamal').setDescription('Send a random funny frog GIF 🐸')
+    new SlashCommandBuilder().setName('wjamal').setDescription('Send a random funny frog GIF 🐸'),
+    new SlashCommandBuilder().setName('claimtime').setDescription('Display official giveaway claim times and rules 🕐')
 ].map(cmd => cmd.toJSON());
 
 client.once('ready', async () => {
@@ -32,7 +33,7 @@ client.on('messageCreate', async (message) => {
     if (message.content.startsWith('!gstart')) {
         setTimeout(() => message.delete().catch(() => null), 500);
         const args = message.content.slice('!gstart'.length).trim().split(/ +/);
-        const duration = parseInt(args[0]);
+        const duration = parseInt(args);
         const prize = args.slice(1).join(' ');
         if (!duration || !prize) return;
         startGiveawayEngine(message.channel, duration, prize, 1, 'normal');
@@ -66,7 +67,7 @@ async function handleModCommands(message, command, args) {
 
     if (command === 'clear') {
         if (!manageMessagesPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        const amount = parseInt(args[0]);
+        const amount = parseInt(args);
         if (isNaN(amount) || amount < 1 || amount > 100) return message.channel.send("⚠️ Please provide a number between 1 and 100.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         await message.channel.bulkDelete(amount + 1, true).catch(() => null);
         return message.channel.send("🧹 Deleted messages.").then(m => setTimeout(() => m.delete().catch(() => null), 4000));
@@ -85,7 +86,7 @@ async function handleModCommands(message, command, args) {
     if (command === 'unwarn') {
         setTimeout(() => message.delete().catch(() => null), 200);
         if (!banPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
+        const target = message.mentions.members.first() || message.guild.members.cache.get(args);
         if (!target) return message.channel.send("❌ Please mention a valid user or provide their ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         if (!warnDatabase[target.id] || warnDatabase[target.id].length === 0) { return message.channel.send(`✅ **${target.user.tag}** has no active warnings to remove.`); }
         warnDatabase[target.id].pop();
@@ -97,7 +98,7 @@ async function handleModCommands(message, command, args) {
     if (!banPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
 
     if (command === 'unban') {
-        const userId = args[0];
+        const userId = args;
         if (!userId) return message.channel.send("❌ Please provide a valid User ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         try { await message.guild.members.unban(userId); return message.channel.send(`🔓 **User ID (${userId})** has been successfully unbanned.`); } 
         catch (e) { return message.channel.send("❌ User not found or is not currently banned.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); }
@@ -118,7 +119,7 @@ async function handleModCommands(message, command, args) {
 
     function parseDuration(str) {
         if (!str) return null; const match = str.match(/^(\d+)(s|m|h|d)/i); if (!match) return null;
-        const val = parseInt(match[1]); const unit = match[2].toLowerCase();
+        const val = parseInt(match); const unit = match.toLowerCase();
         if (unit === 's') return val * 1000; if (unit === 'm') return val * 60 * 1000;
         if (unit === 'h') return val * 60 * 60 * 1000; if (unit === 'd') return val * 24 * 60 * 60 * 1000;
         return null;
@@ -127,7 +128,7 @@ async function handleModCommands(message, command, args) {
     if (command === 'rto') { await target.timeout(null); return message.channel.send(`🗣️ **${target.user.tag}** timeout removed!`); }
 
     if (command === 'to') {
-        const timeArg = args[1]; const durationMs = parseDuration(timeArg);
+        const timeArg = args; const durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         let finalDuration = durationMs || (60 * 1000);
         await target.timeout(finalDuration, reason);
@@ -137,7 +138,7 @@ async function handleModCommands(message, command, args) {
     if (command === 'kick') { const reason = args.slice(1).join(' ') || "No reason provided"; await target.kick(reason); return message.channel.send(`👢 **${target.user.tag}** kicked. Reason: ${reason}`); }
 
     if (command === 'ban') {
-        const timeArg = args[1]; const durationMs = parseDuration(timeArg);
+        const timeArg = args; const durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         await target.ban({ reason }); message.channel.send(`🔨 **${target.user.tag}** banned. Reason: ${reason}`);
         if (durationMs) { setTimeout(async () => { await message.guild.members.unban(target.id).catch(() => null); message.channel.send(`🔓 **${target.user.tag}** temporary ban expired.`); }, durationMs); }
@@ -154,11 +155,35 @@ client.on('interactionCreate', async (interaction) => {
                 .setColor('#F39C12')
                 .setDescription('Here is a complete list of all the features integrated into this bot:')
                 .addFields(
-                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/userinfo` - Shows official profile insights of a user\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches the full-size profile avatar of a member\n`/infractions` - Displays moderation warning history' },
+                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/userinfo` - Shows official profile insights of a user\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches the full-size profile avatar of a member\n`/infractions` - Displays moderation warning history' },
                     { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending for everyone\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes chat messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system (e.g., 45s, 10s, 5m)\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a moderation warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID' },
                     { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway in the channel.' }
                 )
                 .setFooter({ text: `Waffel's Giveaway Utility` });
+            return interaction.reply({ embeds: [embed] });
+        }
+
+        // Nouvelle commande /claimtime avec intégration de votre texte personnalisé
+        if (interaction.commandName === 'claimtime') {
+            const embed = new EmbedBuilder()
+                .setTitle('🎉 Giveaway Info')
+                .setColor('#F39C12')
+                .setDescription(
+                    `🕐 **Giveaway Claim Time**\n` +
+                    `🏆 Quickdrops - 30 Minutes\n` +
+                    `🎁 Weekly/Daily Giveaways - 24 hours\n` +
+                    `🎉 Big Giveaways - 12 hours\n` +
+                    `🏮 Stream Quickdrops - 3 Hours\n\n` +
+                    `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n\n` +
+                    `📕 **Giveaway Rules**\n` +
+                    `• You must show proof with a screen shot showing the part where it @s you\n` +
+                    `• Don't ping any staff in the ticket or anywhere in the server\n` +
+                    `• Only open 1 ticket when claiming a giveaway (you can make a new ticket if you win 2 giveaways)\n` +
+                    `• Make sure to put your ign\n` +
+                    `• Faking or alting giveaways with result in **@Giveaway Blacklist**\n\n` +
+                    `*Proof Of All Giveaways Can Be Found In* ⁠**🟢・proof**`
+                )
+                .setTimestamp();
             return interaction.reply({ embeds: [embed] });
         }
 
@@ -226,7 +251,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
-        const mode = interaction.values[0];
+        const mode = interaction.values;
         const modal = new ModalBuilder().setCustomId(`modal_waffel_${mode}`).setTitle(`Setup: ${mode.toUpperCase()} Mode 🧇`);
         const pInput = new TextInputBuilder().setCustomId('input_prize').setLabel("What is the prize?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 50k Coins / Waffles").setRequired(true);
         const dInput = new TextInputBuilder().setCustomId('input_duration').setLabel("Duration (in minutes):").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 5").setRequired(true);
@@ -304,13 +329,13 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
         }
 
         if (mode === 'clicker') {
-            const winnerId = participants[0];
+            const winnerId = participants;
             const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎁 **Prize:** ${prize}\n\n⚡ **CLICKER OVER!**\n👑 **Fastest Clicker:** <@${winnerId}>`);
             await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
             return await channel.send(`⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@${winnerId}>, you reacted the fastest and won **${prize}**! 🎉🏆`);
         }
 
-        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants[0]); }
+        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants); }
         if (participants.length < winnerCount) {
             const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎁 **Prize:** ${prize}\n\n❌ **Giveaway Ended:** Not enough participants.`);
             return await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
@@ -331,7 +356,7 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
     if (mode === 'clicker') return;
     
     if (mode === 'dok') {
-        const winnerId = winners[0];
+        const winnerId = winners;
         const doubleBtn = new ButtonBuilder().setCustomId('dok_double').setLabel('Double 🟢').setStyle(ButtonStyle.Success);
         const keepBtn = new ButtonBuilder().setCustomId('dok_keep').setLabel('Keep 🔴').setStyle(ButtonStyle.Danger);
         const gameRow = new ActionRowBuilder().addComponents(doubleBtn, keepBtn);
@@ -343,14 +368,14 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
             await gameMsg.edit({ components: [new ActionRowBuilder().addComponents(doubleBtn, keepBtn)] });
             if (gInt.customId === 'dok_keep') { await gInt.reply(`🔒 **Giveaway Ended... KEEP!** <@${winnerId}> kept their **${prize}**! GG! 🧇🎁`); } else {
                 let newPrize = prize; const match = prize.match(/\d+/);
-                if (match) { const oldN = parseInt(match[0]); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = `2x ${prize}`; }
+                if (match) { const oldN = parseInt(match); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = `2x ${prize}`; }
                 await gInt.reply(`🟢 **DOUBLE ACTIVATED!** New reward: **${newPrize}**! Re-rolling in 5s... 🚀`);
                 setTimeout(() => startGiveawayEngine(channel, duration, newPrize, winnerCount, 'dok'), 5000);
             }
         });
     }
     if (mode === 'sos') {
-        const p1 = winners[0]; const p2 = winners[1];
+        const p1 = winners; const p2 = winners;
         const splitBtn = new ButtonBuilder().setCustomId('sos_split').setLabel('Split 🟢').setStyle(ButtonStyle.Success);
         const stealBtn = new ButtonBuilder().setCustomId('sos_steal').setLabel('Steal 🔴').setStyle(ButtonStyle.Danger);
         const sosRow = new ActionRowBuilder().addComponents(splitBtn, stealBtn);
@@ -370,7 +395,7 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
         });
     }
     if (mode === 'rps') {
-        const p1 = winners[0]; const p2 = winners[1];
+        const p1 = winners; const p2 = winners;
         const rBtn = new ButtonBuilder().setCustomId('rps_rock').setLabel('🪨 Rock').setStyle(ButtonStyle.Secondary);
         const pBtn = new ButtonBuilder().setCustomId('rps_paper').setLabel('📄 Paper').setStyle(ButtonStyle.Primary);
         const sBtn = new ButtonBuilder().setCustomId('rps_scissors').setLabel('✂️ Scissors').setStyle(ButtonStyle.Danger);
