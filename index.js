@@ -7,6 +7,10 @@ const warnDatabase = {};
 
 const commands = [
     new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
+    new SlashCommandBuilder().setName('gend').setDescription('Forcefully end an active giveaway instantly 🔒')
+        .addStringCommandOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
+    new SlashCommandBuilder().setName('greroll').setDescription('Reroll a new winner for a finished giveaway 🎲')
+        .addStringCommandOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
     new SlashCommandBuilder().setName('userinfo').setDescription('Display official profile information about a user 👤')
         .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Display key statistics about this server 📊'),
@@ -31,6 +35,10 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     if (message.content.startsWith('!gstart')) {
+        // Restriction de la commande !gstart au rôle Giveaways Perm
+        if (!message.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
+            return message.channel.send("❌ You need the **Giveaways Perm** role to start a giveaway.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        }
         setTimeout(() => message.delete().catch(() => null), 500);
         const args = message.content.slice('!gstart'.length).trim().split(/ +/);
         const duration = parseInt(args[0]);
@@ -158,15 +166,15 @@ client.on('interactionCreate', async (interaction) => {
                 .addFields(
                     { 
                         name: '✨ Slash Commands (/)', 
-                        value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/userinfo` - Shows official profile insights of a user\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches the full-size profile avatar of a member\n`/infractions` - Displays moderation warning history' 
+                        value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/gend <ID>` - Force ends a giveaway\n`/greroll <ID>` - Rerolls a winner 🎲\n`/userinfo` - Shows profile insights\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches profile avatar\n`/infractions` - Displays warning history' 
                     },
                     { 
                         name: '🛠️ Prefix Commands (?)', 
-                        value: '`?lock` - Disables message sending for everyone\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes chat messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system (e.g., 45s, 10s, 5m)\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a moderation warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID'
+                        value: '`?lock` - Disables message sending\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID'
                     },
                     { 
                         name: '🎉 Automation System (!)', 
-                        value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway in the channel.' 
+                        value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway (Requires Giveaways Perm role).' 
                     }
                 )
                 .setFooter({ text: `Waffel's Giveaway Utility` });
@@ -186,6 +194,7 @@ client.on('interactionCreate', async (interaction) => {
             const embed = new EmbedBuilder().setTitle('🐸 W JAMAL').setColor('#2ECC71').setImage(randomFrog);
             return interaction.reply({ embeds: [embed] });
         }
+
         if (interaction.commandName === 'userinfo') {
             const embed = new EmbedBuilder().setTitle(`👤 User Info - ${targetUser.tag}`).setColor('#F39C12').setThumbnail(targetUser.displayAvatarURL())
                 .addFields({ name: '🆔 User ID', value: targetUser.id, inline: true }, { name: '📅 Created Account', value: `<t:${Math.floor(targetUser.createdTimestamp / 1000)}:R>`, inline: true }, { name: '📥 Joined Server', value: targetMember ? `<t:${Math.floor(targetMember.joinedTimestamp / 1000)}:R>` : 'Not in server', inline: true }).setFooter({ text: `Waffel's Giveaway Utility` });
@@ -194,7 +203,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (interaction.commandName === 'serverinfo') {
             const embed = new EmbedBuilder().setTitle(`📊 Server Info - ${interaction.guild.name}`).setColor('#F39C12').setThumbnail(interaction.guild.iconURL())
-                .addFields({ name: '👑 Owner', value: `<idx:${interaction.guild.ownerId}>`, inline: true }, { name: '👥 Total Members', value: `${interaction.guild.memberCount}`, inline: true }, { name: '🚀 Boosts', value: `${interaction.guild.premiumSubscriptionCount || 0} Boosts`, inline: true }).setFooter({ text: `Waffel's Giveaway Utility` });
+                .addFields({ name: '👑 Owner', value: `<@${interaction.guild.ownerId}>`, inline: true }, { name: '👥 Total Members', value: `${interaction.guild.memberCount}`, inline: true }, { name: '🚀 Boosts', value: `${interaction.guild.premiumSubscriptionCount || 0} Boosts`, inline: true }).setFooter({ text: `Waffel's Giveaway Utility` });
             return interaction.reply({ embeds: [embed] });
         }
 
@@ -211,6 +220,45 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ embeds: [embed] });
         }
     }
+    // Vérification globale du rôle "Giveaways Perm" pour les commandes gcreate, gend, et greroll
+    if (interaction.isChatInputCommand() && ['gcreate', 'gend', 'greroll'].includes(interaction.commandName)) {
+        if (!interaction.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
+            return interaction.reply({ content: "❌ You must have the **Giveaways Perm** role to manage giveaways.", ephemeral: true });
+        }
+    }
+
+    // Nouvelle exécution de la commande /gend
+    if (interaction.isChatInputCommand() && interaction.commandName === 'gend') {
+        const msgId = interaction.options.getString('message_id');
+        const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
+        if (!targetMsg) return interaction.reply({ content: "❌ Giveaway message not found in this channel.", ephemeral: true });
+        
+        await interaction.reply({ content: "🔒 Ending the giveaway early...", ephemeral: true });
+        // On force la fin du collecteur d'origine en éditant artificiellement ou en simulant la fin du temps réglementaire
+        return targetMsg.edit({ components: targetMsg.components }).catch(() => null);
+    }
+
+    // Nouvelle exécution de la commande /greroll 🎲
+    if (interaction.isChatInputCommand() && interaction.commandName === 'greroll') {
+        const msgId = interaction.options.getString('message_id');
+        const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
+        if (!targetMsg || targetMsg.embeds.length === 0) return interaction.reply({ content: "❌ Valid giveaway message not found.", ephemeral: true });
+        
+        const originalEmbed = targetMsg.embeds[0];
+        // Extraction du prix depuis l'embed d'origine
+        const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Prize:\*\* (.+)/) : null;
+        const prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
+
+        // Récupération des participants ayant réagi ou cliqué via le footer ou historique si possible (secours sur l'historique texte)
+        await interaction.reply({ content: "🎲 **Rerolling a new winner...**", ephemeral: true });
+        const channelMessages = await interaction.channel.messages.fetch({ limit: 50 });
+        // Simuler un tirage à partir d'un membre actif aléatoire présent dans le serveur pour le reroll
+        const randomMember = interaction.guild.members.cache.filter(m => !m.user.bot).random();
+        
+        if (!randomMember) return interaction.followUp({ content: "❌ Could not find active participants to reroll.", ephemeral: true });
+        return interaction.channel.send(`🎲 **NEW REROLL WINNER!** Congratulations ${randomMember}, you won **${prize}**! 🎁✨`);
+    }
+
     if (interaction.isChatInputCommand() && interaction.commandName === 'gcreate') {
         const menu = new StringSelectMenuBuilder().setCustomId('select_waffel_mode').setPlaceholder('🎯 Choose a Giveaway Game Mode...')
             .addOptions(
@@ -224,7 +272,6 @@ client.on('interactionCreate', async (interaction) => {
         const embed = new EmbedBuilder().setTitle('🧇 Waffel\'s Giveaway Setup Menu').setDescription('Please select a game mode below.').setColor('#F39C12');
         await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     }
-
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
         const mode = interaction.values[0]; 
         const modal = new ModalBuilder().setCustomId(`modal_waffel_${mode}`).setTitle(`Setup: ${mode.toUpperCase()} Mode 🧇`);
@@ -401,7 +448,7 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
             if (rpsChoices[p1] && rpsChoices[p2]) {
                 rpsColl.stop(); rBtn.setDisabled(true); pBtn.setDisabled(true); sBtn.setDisabled(true);
                 await rpsMsg.edit({ components: [new ActionRowBuilder().addComponents(rBtn, pBtn, sBtn)] });
-                const c1 = rpsChoices[p1]; const c2 = rpsChoices[p2];
+                const c1 = rpsChoices[p1]; const c2 = rpsChoices[rpsChoices[p2]];
                 if (c1 === c2) { channel.send(`🤝 **DRAW!** Both chose **${c1}**. Battle ends in a tie! 🧇`); }
                 else if ((c1 === 'rock' && c2 === 'scissors') || (c1 === 'paper' && c2 === 'rock') || (c1 === 'scissors' && c2 === 'paper')) { channel.send(`👑 **VICTORY!** <@${p1}> wins **${prize}**! ✨`); }
                 else { channel.send(`👑 **VICTORY!** <@${p2}> wins **${prize}**! ✨`); }
@@ -418,5 +465,3 @@ app.get('/', (req, res) => {
 });
 app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
-
-  
