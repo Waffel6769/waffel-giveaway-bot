@@ -7,10 +7,12 @@ const warnDatabase = {};
 
 const commands = [
     new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
+    // CORRECTION ICI : addStringOption à la place de addStringCommandOption
     new SlashCommandBuilder().setName('gend').setDescription('Forcefully end an active giveaway instantly 🔒')
-        .addStringCommandOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
+        .addStringOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
+    // CORRECTION ICI AUSSI
     new SlashCommandBuilder().setName('greroll').setDescription('Reroll a new winner for a finished giveaway 🎲')
-        .addStringCommandOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
+        .addStringOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
     new SlashCommandBuilder().setName('userinfo').setDescription('Display official profile information about a user 👤')
         .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Display key statistics about this server 📊'),
@@ -218,9 +220,7 @@ client.on('interactionCreate', async (interaction) => {
             if (warns.length === 0) { embed.setDescription(`✅ This user has a perfectly clean record. No infractions found!`); } 
             else { embed.setDescription(`⚠️ Total Warnings: **${warns.length}**`); warns.forEach((warn, index) => { embed.addFields({ name: `Warning #${index + 1} (${warn.date})`, value: `**Reason:** ${warn.reason}\n**Moderator:** ${warn.moderator}` }); }); }
             return interaction.reply({ embeds: [embed] });
-        }
-    }
-    // Vérification globale du rôle "Giveaways Perm" pour les commandes gcreate, gend, et greroll
+        }    // Vérification globale du rôle "Giveaways Perm" pour les commandes gcreate, gend, et greroll
     if (interaction.isChatInputCommand() && ['gcreate', 'gend', 'greroll'].includes(interaction.commandName)) {
         if (!interaction.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
             return interaction.reply({ content: "❌ You must have the **Giveaways Perm** role to manage giveaways.", ephemeral: true });
@@ -465,3 +465,5 @@ app.get('/', (req, res) => {
 });
 app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
+
+    }
