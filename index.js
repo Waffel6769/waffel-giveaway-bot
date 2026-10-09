@@ -83,7 +83,7 @@ async function handleModCommands(message, command, args) {
         catch (e) { return message.channel.send("❌ Unable to add role. Check role hierarchy.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); }
     }
 
-    if (command === 'unwarn') {
+    if (command === 'unw') {
         setTimeout(() => message.delete().catch(() => null), 200);
         if (!banPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
@@ -117,20 +117,40 @@ async function handleModCommands(message, command, args) {
 
     if (!target.moderatable) return message.channel.send("❌ I cannot moderate this user.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
 
+    // Fonction de conversion du temps améliorée et flexible
     function parseDuration(str) {
-        if (!str) return null; const match = str.match(/^(\d+)(s|m|h|d)/i); if (!match) return null;
-        const val = parseInt(match[1]); const unit = match[2].toLowerCase();
-        if (unit === 's') return val * 1000; if (unit === 'm') return val * 60 * 1000;
-        if (unit === 'h') return val * 60 * 60 * 1000; if (unit === 'd') return val * 24 * 60 * 60 * 1000;
+        if (!str) return null; 
+        const match = str.match(/^(\d+)(sec|s|m|h|d|w|y)/i); 
+        if (!match) return null;
+        const val = parseInt(match[1]); 
+        const unit = match[2].toLowerCase();
+        
+        if (unit === 's' || unit === 'sec') return val * 1000; 
+        if (unit === 'm') return val * 60 * 1000;
+        if (unit === 'h') return val * 60 * 60 * 1000; 
+        if (unit === 'd') return val * 24 * 60 * 60 * 1000;
+        if (unit === 'w') return val * 7 * 24 * 60 * 60 * 1000;
+        if (unit === 'y') return val * 365 * 24 * 60 * 60 * 1000;
         return null;
     }
 
     if (command === 'rto') { await target.timeout(null); return message.channel.send(`🗣️ **${target.user.tag}** timeout removed!`); }
 
     if (command === 'to') {
-        const timeArg = args[0]; const durationMs = parseDuration(timeArg);
-        let reason = durationMs ? args.slice(1).join(' ') : args.join(' ') || "No reason provided";
+        // args[0] est la mention, args[1] est le temps écrit (ex: 10sec, 3m)
+        const timeArg = args[1]; 
+        const durationMs = parseDuration(timeArg);
+        
+        // Si le temps fourni est valide, la raison commence après le temps, sinon c'est 1 minute par défaut
+        let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         let finalDuration = durationMs || (60 * 1000);
+        
+        // Discord limite techniquement les timeouts natifs à 28 jours maximum
+        if (finalDuration > 28 * 24 * 60 * 60 * 1000) {
+            finalDuration = 28 * 24 * 60 * 60 * 1000;
+            timeArg = "28d (Discord Maximum Limit)";
+        }
+
         await target.timeout(finalDuration, reason);
         return message.channel.send(`🤫 **${target.user.tag}** timed out for **${timeArg || '1m'}**. Reason: ${reason}`);
     }
@@ -138,8 +158,8 @@ async function handleModCommands(message, command, args) {
     if (command === 'kick') { const reason = args.slice(1).join(' ') || "No reason provided"; await target.kick(reason); return message.channel.send(`👢 **${target.user.tag}** kicked. Reason: ${reason}`); }
 
     if (command === 'ban') {
-        const timeArg = args[0]; const durationMs = parseDuration(timeArg);
-        let reason = durationMs ? args.slice(1).join(' ') : args.join(' ') || "No reason provided";
+        const timeArg = args[1]; const durationMs = parseDuration(timeArg);
+        let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         await target.ban({ reason }); message.channel.send(`🔨 **${target.user.tag}** banned. Reason: ${reason}`);
         if (durationMs) { setTimeout(async () => { await message.guild.members.unban(target.id).catch(() => null); message.channel.send(`🔓 **${target.user.tag}** temporary ban expired.`); }, durationMs); }
     }
@@ -426,4 +446,3 @@ app.get('/', (req, res) => {
 });
 app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
-
