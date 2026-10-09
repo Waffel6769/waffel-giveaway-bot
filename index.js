@@ -1,16 +1,27 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, REST, Routes, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits } = require('discord.js');
+const { 
+    Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, 
+    ButtonStyle, ComponentType, REST, Routes, SlashCommandBuilder, 
+    StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, 
+    TextInputBuilder, TextInputStyle, PermissionFlagsBits 
+} = require('discord.js');
+const express = require('express');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers] });
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent, 
+        GatewayIntentBits.GuildMembers
+    ] 
+});
 
-const warnDatabase = {}; 
-
+const warnDatabase = {};
+const app = express();
 const commands = [
     new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
-    // CORRECTION ICI : addStringOption à la place de addStringCommandOption
     new SlashCommandBuilder().setName('gend').setDescription('Forcefully end an active giveaway instantly 🔒')
         .addStringOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
-    // CORRECTION ICI AUSSI
     new SlashCommandBuilder().setName('greroll').setDescription('Reroll a new winner for a finished giveaway 🎲')
         .addStringOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
     new SlashCommandBuilder().setName('userinfo').setDescription('Display official profile information about a user 👤')
@@ -24,20 +35,28 @@ const commands = [
     new SlashCommandBuilder().setName('wjamal').setDescription('Send a random funny frog GIF 🐸'),
     new SlashCommandBuilder().setName('claimtime').setDescription('Display official giveaway claim times and rules 🕐')
 ].map(cmd => cmd.toJSON());
-
 client.once('ready', async () => {
     console.log(`✨ Waffel's Giveaway Bot is logged in as ${client.user.tag}!`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
         console.log('✅ Successfully reloaded application (/) commands.');
-    } catch (error) { console.error(error); }
+    } catch (error) { 
+        console.error(error); 
+    }
 });
+
+app.get('/', (req, res) => {
+    if (client && client.user) { 
+        console.log(`📡 KeepAlive received! Bot status: ${client.user.presence.status}`); 
+    }
+    res.send("Waffel's Giveaway is perfectly awake and running 24/7!");
+});
+app.listen(process.env.PORT || 3000);
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     if (message.content.startsWith('!gstart')) {
-        // Restriction de la commande !gstart au rôle Giveaways Perm
         if (!message.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
             return message.channel.send("❌ You need the **Giveaways Perm** role to start a giveaway.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         }
@@ -89,8 +108,12 @@ async function handleModCommands(message, command, args) {
         const target = message.mentions.members.first();
         const role = message.mentions.roles.first();
         if (!target || !role) return message.channel.send("⚠️ Usage: `?roleadd @member @role`").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        try { await target.roles.add(role); return message.channel.send(`✅ The role **${role.name}** has been successfully added to **${target.user.tag}**.`); } 
-        catch (e) { return message.channel.send("❌ Unable to add role. Check role hierarchy.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); }
+        try { 
+            await target.roles.add(role); 
+            return message.channel.send(`✅ The role **${role.name}** has been successfully added to **${target.user.tag}**.`); 
+        } catch (e) { 
+            return message.channel.send("❌ Unable to add role. Check role hierarchy.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); 
+        }
     }
 
     if (command === 'unwarn') {
@@ -102,7 +125,6 @@ async function handleModCommands(message, command, args) {
         warnDatabase[target.id].pop();
         return message.channel.send(`🧹 Removed the latest warning from **${target.user.tag}** (Remaining: ${warnDatabase[target.id].length}).`);
     }
-
     if (!['to', 'rto', 'kick', 'ban', 'unban', 'warn'].includes(command)) return;
     setTimeout(() => message.delete().catch(() => null), 200);
     if (!banPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
@@ -143,7 +165,7 @@ async function handleModCommands(message, command, args) {
         let finalDuration = durationMs || (60 * 1000);
         if (finalDuration > 28 * 24 * 60 * 60 * 1000) { finalDuration = 28 * 24 * 60 * 60 * 1000; timeArg = "28d (Discord Max)"; }
         await target.timeout(finalDuration, reason);
-        return message.channel.send(`:MicroMute: **${target.user.tag}** timed out for **${timeArg || '1m'}**. Reason: ${reason}`);
+        return message.channel.send(`🔇 **${target.user.tag}** timed out for **${timeArg || '1m'}**. Reason: ${reason}`);
     }
 
     if (command === 'kick') { const reason = args.slice(1).join(' ') || "No reason provided"; await target.kick(reason); return message.channel.send(`👢 **${target.user.tag}** kicked. Reason: ${reason}`); }
@@ -156,30 +178,34 @@ async function handleModCommands(message, command, args) {
     }
 }
 client.on('interactionCreate', async (interaction) => {
+    if (interaction.isChatInputCommand() && ['gcreate', 'gend', 'greroll'].includes(interaction.commandName)) {
+        if (!interaction.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
+            return interaction.reply({ content: "❌ You must have the **Giveaways Perm** role to manage giveaways.", ephemeral: true });
+        }
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
+        if (!interaction.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
+            return interaction.reply({ content: "❌ You don't have permission to interact with this setup menu.", ephemeral: true });
+        }
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_waffel_')) {
+        if (!interaction.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
+            return interaction.reply({ content: "❌ Session expired or permission denied to apply this giveaway setup.", ephemeral: true });
+        }
+    }
     if (interaction.isChatInputCommand()) {
         const targetUser = interaction.options.getUser('target') || interaction.user;
         const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
 
         if (interaction.commandName === 'help') {
-            const embed = new EmbedBuilder()
-                .setTitle('📋 Available Bot Commands Inventory')
-                .setColor('#F39C12')
-                .setDescription('Here is a complete list of all the features integrated into this bot:')
+            const embed = new EmbedBuilder().setTitle('📋 Available Bot Commands Inventory').setColor('#F39C12').setDescription('Here is a complete list of all the features integrated into this bot:')
                 .addFields(
-                    { 
-                        name: '✨ Slash Commands (/)', 
-                        value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/gend <ID>` - Force ends a giveaway\n`/greroll <ID>` - Rerolls a winner 🎲\n`/userinfo` - Shows profile insights\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches profile avatar\n`/infractions` - Displays warning history' 
-                    },
-                    { 
-                        name: '🛠️ Prefix Commands (?)', 
-                        value: '`?lock` - Disables message sending\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID'
-                    },
-                    { 
-                        name: '🎉 Automation System (!)', 
-                        value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway (Requires Giveaways Perm role).' 
-                    }
-                )
-                .setFooter({ text: `Waffel's Giveaway Utility` });
+                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/gend <ID>` - Force ends a giveaway\n`/greroll <ID>` - Rerolls a winner 🎲\n`/userinfo` - Shows profile insights\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches profile avatar\n`/infractions` - Displays warning history' },
+                    { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID' },
+                    { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway (Requires Giveaways Perm role).' }
+                ).setFooter({ text: `Waffel's Giveaway Utility` });
             return interaction.reply({ embeds: [embed] });
         }
 
@@ -220,58 +246,43 @@ client.on('interactionCreate', async (interaction) => {
             if (warns.length === 0) { embed.setDescription(`✅ This user has a perfectly clean record. No infractions found!`); } 
             else { embed.setDescription(`⚠️ Total Warnings: **${warns.length}**`); warns.forEach((warn, index) => { embed.addFields({ name: `Warning #${index + 1} (${warn.date})`, value: `**Reason:** ${warn.reason}\n**Moderator:** ${warn.moderator}` }); }); }
             return interaction.reply({ embeds: [embed] });
-        }    // Vérification globale du rôle "Giveaways Perm" pour les commandes gcreate, gend, et greroll
-    if (interaction.isChatInputCommand() && ['gcreate', 'gend', 'greroll'].includes(interaction.commandName)) {
-        if (!interaction.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
-            return interaction.reply({ content: "❌ You must have the **Giveaways Perm** role to manage giveaways.", ephemeral: true });
+        }
+        if (interaction.commandName === 'gcreate') {
+            const menu = new StringSelectMenuBuilder().setCustomId('select_waffel_mode').setPlaceholder('🎯 Choose a Giveaway Game Mode...')
+                .addOptions(
+                    new StringSelectMenuOptionBuilder().setLabel('Normal Mode').setDescription('Classic giveaway.').setValue('normal').setEmoji('🎉'),
+                    new StringSelectMenuOptionBuilder().setLabel('Waffle Clicker').setDescription('First one to click the button wins instantly! 🧇').setValue('clicker').setEmoji('⚡'),
+                    new StringSelectMenuOptionBuilder().setLabel('Double Or Keep (DoK)').setDescription('Keep or double and reroll!').setValue('dok').setEmoji('🟢'),
+                    new StringSelectMenuOptionBuilder().setLabel('Split Or Steal (SoS)').setDescription('Share or betray?').setValue('sos').setEmoji('⚔️'),
+                    new StringSelectMenuOptionBuilder().setLabel('Rock Paper Scissors (RPS)').setDescription('RPS Battle!').setValue('rps').setEmoji('🪨')
+                );
+            const row = new ActionRowBuilder().addComponents(menu);
+            const embed = new EmbedBuilder().setTitle('🧇 Waffel\'s Giveaway Setup Menu').setDescription('Please select a game mode below.').setColor('#F39C12');
+            return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        }
+
+        if (interaction.commandName === 'gend') {
+            const msgId = interaction.options.getString('message_id');
+            const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
+            if (!targetMsg) return interaction.reply({ content: "❌ Giveaway message not found in this channel.", ephemeral: true });
+            await interaction.reply({ content: "🔒 Ending the giveaway early...", ephemeral: true });
+            return targetMsg.edit({ components: targetMsg.components }).catch(() => null);
+        }
+
+        if (interaction.commandName === 'greroll') {
+            const msgId = interaction.options.getString('message_id');
+            const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
+            if (!targetMsg || targetMsg.embeds.length === 0) return interaction.reply({ content: "❌ Valid giveaway message not found.", ephemeral: true });
+            const originalEmbed = targetMsg.embeds[0];
+            const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Prize:\*\* (.+)/) : null;
+            const prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
+            await interaction.reply({ content: "🎲 **Rerolling a new winner...**", ephemeral: true });
+            const randomMember = interaction.guild.members.cache.filter(m => !m.user.bot).random();
+            if (!randomMember) return interaction.followUp({ content: "❌ Could not find active participants to reroll.", ephemeral: true });
+            return interaction.channel.send(`🎲 **NEW REROLL WINNER!** Congratulations ${randomMember}, you won **${prize}**! 🎁✨`);
         }
     }
 
-    // Nouvelle exécution de la commande /gend
-    if (interaction.isChatInputCommand() && interaction.commandName === 'gend') {
-        const msgId = interaction.options.getString('message_id');
-        const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
-        if (!targetMsg) return interaction.reply({ content: "❌ Giveaway message not found in this channel.", ephemeral: true });
-        
-        await interaction.reply({ content: "🔒 Ending the giveaway early...", ephemeral: true });
-        // On force la fin du collecteur d'origine en éditant artificiellement ou en simulant la fin du temps réglementaire
-        return targetMsg.edit({ components: targetMsg.components }).catch(() => null);
-    }
-
-    // Nouvelle exécution de la commande /greroll 🎲
-    if (interaction.isChatInputCommand() && interaction.commandName === 'greroll') {
-        const msgId = interaction.options.getString('message_id');
-        const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
-        if (!targetMsg || targetMsg.embeds.length === 0) return interaction.reply({ content: "❌ Valid giveaway message not found.", ephemeral: true });
-        
-        const originalEmbed = targetMsg.embeds[0];
-        // Extraction du prix depuis l'embed d'origine
-        const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Prize:\*\* (.+)/) : null;
-        const prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
-
-        // Récupération des participants ayant réagi ou cliqué via le footer ou historique si possible (secours sur l'historique texte)
-        await interaction.reply({ content: "🎲 **Rerolling a new winner...**", ephemeral: true });
-        const channelMessages = await interaction.channel.messages.fetch({ limit: 50 });
-        // Simuler un tirage à partir d'un membre actif aléatoire présent dans le serveur pour le reroll
-        const randomMember = interaction.guild.members.cache.filter(m => !m.user.bot).random();
-        
-        if (!randomMember) return interaction.followUp({ content: "❌ Could not find active participants to reroll.", ephemeral: true });
-        return interaction.channel.send(`🎲 **NEW REROLL WINNER!** Congratulations ${randomMember}, you won **${prize}**! 🎁✨`);
-    }
-
-    if (interaction.isChatInputCommand() && interaction.commandName === 'gcreate') {
-        const menu = new StringSelectMenuBuilder().setCustomId('select_waffel_mode').setPlaceholder('🎯 Choose a Giveaway Game Mode...')
-            .addOptions(
-                new StringSelectMenuOptionBuilder().setLabel('Normal Mode').setDescription('Classic giveaway.').setValue('normal').setEmoji('🎉'),
-                new StringSelectMenuOptionBuilder().setLabel('Waffle Clicker').setDescription('First one to click the button wins instantly! 🧇').setValue('clicker').setEmoji('⚡'),
-                new StringSelectMenuOptionBuilder().setLabel('Double Or Keep (DoK)').setDescription('Keep or double and reroll!').setValue('dok').setEmoji('🟢'),
-                new StringSelectMenuOptionBuilder().setLabel('Split Or Steal (SoS)').setDescription('Share or betray?').setValue('sos').setEmoji('⚔️'),
-                new StringSelectMenuOptionBuilder().setLabel('Rock Paper Scissors (RPS)').setDescription('RPS Battle!').setValue('rps').setEmoji('🪨')
-            );
-        const row = new ActionRowBuilder().addComponents(menu);
-        const embed = new EmbedBuilder().setTitle('🧇 Waffel\'s Giveaway Setup Menu').setDescription('Please select a game mode below.').setColor('#F39C12');
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-    }
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
         const mode = interaction.values[0]; 
         const modal = new ModalBuilder().setCustomId(`modal_waffel_${mode}`).setTitle(`Setup: ${mode.toUpperCase()} Mode 🧇`);
@@ -301,7 +312,6 @@ client.on('interactionCreate', async (interaction) => {
         startGiveawayEngine(interaction.channel, duration, prize, winners, mode);
     }
 });
-
 async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) {
     const participants = [];
     const buttonLabel = mode === 'clicker' ? 'CLICK ME TO WIN! 🧇⚡' : 'Join the Giveaway! 🎉';
@@ -393,7 +403,6 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
 }
 async function handleMiniGames(channel, winners, prize, duration, winnerCount, mode) {
     if (mode === 'clicker') return;
-    
     if (mode === 'dok') {
         const winnerId = winners[0];
         const doubleBtn = new ButtonBuilder().setCustomId('dok_double').setLabel('Double 🟢').setStyle(ButtonStyle.Success);
@@ -433,6 +442,7 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
             }
         });
     }
+
     if (mode === 'rps') {
         const p1 = winners[0]; const p2 = winners[1];
         const rBtn = new ButtonBuilder().setCustomId('rps_rock').setLabel('🪨 Rock').setStyle(ButtonStyle.Secondary);
@@ -456,12 +466,5 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
         });
     }
 }
-
-const express = require('express');
-const app = express();
-app.get('/', (req, res) => {
-    if (client && client.user) { console.log(`📡 KeepAlive received! Bot status: ${client.user.presence.status}`); }
-    res.send('Waffel\'s Giveaway is perfectly awake and running 24/7!');
-});
-app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
+
