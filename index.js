@@ -448,7 +448,7 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
             if (rpsChoices[p1] && rpsChoices[p2]) {
                 rpsColl.stop(); rBtn.setDisabled(true); pBtn.setDisabled(true); sBtn.setDisabled(true);
                 await rpsMsg.edit({ components: [new ActionRowBuilder().addComponents(rBtn, pBtn, sBtn)] });
-                const c1 = rpsChoices[p1]; const c2 = rpsChoices[rpsChoices[p2]];
+                const c1 = rpsChoices[p1]; const c2 = rpsChoices[p2];
                 if (c1 === c2) { channel.send(`🤝 **DRAW!** Both chose **${c1}**. Battle ends in a tie! 🧇`); }
                 else if ((c1 === 'rock' && c2 === 'scissors') || (c1 === 'paper' && c2 === 'rock') || (c1 === 'scissors' && c2 === 'paper')) { channel.send(`👑 **VICTORY!** <@${p1}> wins **${prize}**! ✨`); }
                 else { channel.send(`👑 **VICTORY!** <@${p2}> wins **${prize}**! ✨`); }
@@ -465,5 +465,3 @@ app.get('/', (req, res) => {
 });
 app.listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_TOKEN);
-
-    }
