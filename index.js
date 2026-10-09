@@ -143,7 +143,7 @@ async function handleModCommands(message, command, args) {
         let finalDuration = durationMs || (60 * 1000);
         if (finalDuration > 28 * 24 * 60 * 60 * 1000) { finalDuration = 28 * 24 * 60 * 60 * 1000; timeArg = "28d (Discord Max)"; }
         await target.timeout(finalDuration, reason);
-        return message.channel.send(`🤫 **${target.user.tag}** timed out for **${timeArg || '1m'}**. Reason: ${reason}`);
+        return message.channel.send(`:MicroMute: **${target.user.tag}** timed out for **${timeArg || '1m'}**. Reason: ${reason}`);
     }
 
     if (command === 'kick') { const reason = args.slice(1).join(' ') || "No reason provided"; await target.kick(reason); return message.channel.send(`👢 **${target.user.tag}** kicked. Reason: ${reason}`); }
