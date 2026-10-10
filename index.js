@@ -183,7 +183,7 @@ async function handleModCommands(message, command, args) {
     if (command === 'kick') { const reason = args.slice(1).join(' ') || "No reason provided"; await target.kick(reason); return message.channel.send(`👢 **${target.user.tag}** kicked. Reason: ${reason}`); }
 
     if (command === 'ban') {
-        const timeArg = args[1]; const durationMs = parseDuration(timeArg);
+        let timeArg = args[1]; let durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         await target.ban({ reason }); message.channel.send(`🔨 **${target.user.tag}** banned. Reason: ${reason}`);
         if (durationMs) { setTimeout(async () => { await message.guild.members.unban(target.id).catch(() => null); message.channel.send(`🔓 **${target.user.tag}** temporary ban expired.`); }, durationMs); }
@@ -212,7 +212,7 @@ client.on('interactionCreate', async (interaction) => {
         const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
 
         if (interaction.commandName === 'help') {
-            const embed = new EmbedBuilder().setTitle('📋 Available Bot Commands Inventory').setColor('#F39C12').setDescription('Here is a complete list of all the features integrated into this bot:')
+            const embed = new EmbedBuilder().setTitle('📋 Available Bot Commands Inventory').setColor('#F1C40F').setDescription('Here is a complete list of all the features integrated into this bot:')
                 .addFields(
                     { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/gend <ID>` - Force ends a giveaway\n`/greroll <ID>` - Rerolls a winner 🎲\n`/userinfo` - Shows profile insights\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches profile avatar\n`/infractions` - Displays warning history' },
                     { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID' },
@@ -222,7 +222,7 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         if (interaction.commandName === 'claimtime') {
-            const embed = new EmbedBuilder().setTitle('🎉 Giveaway Info').setColor('#F39C12').setDescription(
+            const embed = new EmbedBuilder().setTitle('🎉 Giveaway Info').setColor('#F1C40F').setDescription(
                 `🕐 **Giveaway Claim Time**\n🏆 Quickdrops - 30 Minutes\n🎁 Weekly/Daily Giveaways - 24 hours\n🎉 Big Giveaways - 12 hours\n🏮 Stream Quickdrops - 3 Hours\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n\n📕 **Giveaway Rules**\n• You must show proof with a screen shot showing the part where it @s you\n• Don't ping any staff in the ticket or anywhere in the server\n• Only open 1 ticket when claiming a giveaway\n• Make sure to put your ign\n• Faking or alting giveaways with result in **@Giveaway Blacklist**\n\n*Proof Of All Giveaways Can Be Found In* **🟢・proof**`
             ).setTimestamp();
             return interaction.reply({ embeds: [embed] });
@@ -236,19 +236,19 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         if (interaction.commandName === 'userinfo') {
-            const embed = new EmbedBuilder().setTitle(`👤 User Info - ${targetUser.tag}`).setColor('#F39C12').setThumbnail(targetUser.displayAvatarURL())
+            const embed = new EmbedBuilder().setTitle(`👤 User Info - ${targetUser.tag}`).setColor('#F1C40F').setThumbnail(targetUser.displayAvatarURL())
                 .addFields({ name: '🆔 User ID', value: targetUser.id, inline: true }, { name: '📅 Created Account', value: `<t:${Math.floor(targetUser.createdTimestamp / 1000)}:R>`, inline: true }, { name: '📥 Joined Server', value: targetMember ? `<t:${Math.floor(targetMember.joinedTimestamp / 1000)}:R>` : 'Not in server', inline: true }).setFooter({ text: `Waffel's Giveaway Utility` });
             return interaction.reply({ embeds: [embed] });
         }
 
         if (interaction.commandName === 'serverinfo') {
-            const embed = new EmbedBuilder().setTitle(`📊 Server Info - ${interaction.guild.name}`).setColor('#F39C12').setThumbnail(interaction.guild.iconURL())
+            const embed = new EmbedBuilder().setTitle(`📊 Server Info - ${interaction.guild.name}`).setColor('#F1C40F').setThumbnail(interaction.guild.iconURL())
                 .addFields({ name: '👑 Owner', value: `<@${interaction.guild.ownerId}>`, inline: true }, { name: '👥 Total Members', value: `${interaction.guild.memberCount}`, inline: true }, { name: '🚀 Boosts', value: `${interaction.guild.premiumSubscriptionCount || 0} Boosts`, inline: true }).setFooter({ text: `Waffel's Giveaway Utility` });
             return interaction.reply({ embeds: [embed] });
         }
 
         if (interaction.commandName === 'avatar') {
-            const embed = new EmbedBuilder().setTitle(`🖼️ Avatar of ${targetUser.tag}`).setColor('#F39C12').setImage(targetUser.displayAvatarURL({ size: 1024 })).setFooter({ text: `Waffel's Giveaway Utility` });
+            const embed = new EmbedBuilder().setTitle(`🖼️ Avatar of ${targetUser.tag}`).setColor('#F1C40F').setImage(targetUser.displayAvatarURL({ size: 1024 })).setFooter({ text: `Waffel's Giveaway Utility` });
             return interaction.reply({ embeds: [embed] });
         }
 
@@ -269,7 +269,7 @@ client.on('interactionCreate', async (interaction) => {
                     new StringSelectMenuOptionBuilder().setLabel('Rock Paper Scissors (RPS)').setDescription('RPS Battle!').setValue('rps').setEmoji('🪨')
                 );
             const row = new ActionRowBuilder().addComponents(menu);
-            const embed = new EmbedBuilder().setTitle('🧇 Waffel\'s Giveaway Setup Menu').setDescription('Please select a game mode below.').setColor('#F39C12');
+            const embed = new EmbedBuilder().setTitle('🧇 Waffel\'s Giveaway Setup Menu').setDescription('Please select a game mode below.').setColor('#F1C40F');
             return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
         }
 
@@ -286,7 +286,7 @@ client.on('interactionCreate', async (interaction) => {
             const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
             if (!targetMsg || targetMsg.embeds.length === 0) return interaction.reply({ content: "❌ Valid giveaway message not found.", ephemeral: true });
             const originalEmbed = targetMsg.embeds[0];
-            const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/\*\*Each winner gets:\*\* (.+)/) : null;
+            const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Each winner gets:\*\* (.+)/) : null;
             const prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
             await interaction.reply({ content: "🎲 **Rerolling a new winner...**", ephemeral: true });
             const randomMember = interaction.guild.members.cache.filter(m => !m.user.bot).random();
@@ -344,14 +344,14 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
     const row = new ActionRowBuilder().addComponents(enterButton);
     
     const endTimeStamp = Math.floor((Date.now() + durationMs) / 1000);
-    const title = customTitle || "WAFFEL'S GIVEAWAY";
+    const title = customTitle ? `🧇 ${customTitle} 🧇` : "✨ WAFFEL'S GIVEAWAY ✨";
 
-    let description = `Ends: <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\nHosted by: ${hostUser}\nEntries: **0**\nWinners: **${winnerCount}**\nEach winner gets: **${prize}**\nClaim time: **5 minutes**`;
+    let description = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **0**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **5 minutes**`;
     if (mode === 'clicker') { 
-        description = `⚡ **WAFFLE CLICKER (SPEED GAME)** ⚡\nHosted by: ${hostUser}\nEach winner gets: **${prize}**\n\n🚨 The very **FIRST** person to click the green button wins instantly!`; 
+        description = `⚡ **WAFFLE CLICKER (SPEED GAME)** ⚡\n👑 **Hosted by:** ${hostUser}\n🎁 **Each winner gets:** **${prize}**\n\n🚨 The very **FIRST** person to click the green button wins instantly!`; 
     }
 
-    const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor('#4a5768').setTimestamp();
+    const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor('#F1C40F').setTimestamp();
     const msg = await channel.send({ embeds: [embed], components: [row] });
     
     const maxEntries = mode === 'clicker' ? 1 : undefined;
@@ -370,7 +370,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
                     return btnInt.reply({ content: "⚠️ You are already participating!", components: [leaveRow], ephemeral: true });
                 }
                 participants.push(btnInt.user.id);
-                let upDescription = `Ends: <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\nHosted by: ${hostUser}\nEntries: **${participants.length}**\nWinners: **${winnerCount}**\nEach winner gets: **${prize}**\nClaim time: **5 minutes**`;
+                let upDescription = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **${participants.length}**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **5 minutes**`;
                 const upEmbed = EmbedBuilder.from(embed).setDescription(upDescription);
                 await btnInt.update({ embeds: [upEmbed] });
                 await btnInt.followUp({ content: "✅ Successfully entered the giveaway!", ephemeral: true });
@@ -383,7 +383,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
             const index = participants.indexOf(btnInt.user.id);
             if (index > -1) {
                 participants.splice(index, 1);
-                let upDescription = `Ends: <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\nHosted by: ${hostUser}\nEntries: **${participants.length}**\nWinners: **${winnerCount}**\nEach winner gets: **${prize}**\nClaim time: **5 minutes**`;
+                let upDescription = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **${participants.length}**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **5 minutes**`;
                 const upEmbed = EmbedBuilder.from(embed).setDescription(upDescription);
                 await msg.edit({ embeds: [upEmbed] });
                 await btnInt.update({ content: "👋 You have successfully left this giveaway.", components: [] });
@@ -398,20 +398,20 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
         if (!endMsg) return;
 
         if (participants.length === 0) {
-            const finalEmbed = EmbedBuilder.from(embed).setDescription(`❌ **Giveaway Ended:** No one joined.\nHosted by: ${hostUser}\nEach winner gets: **${prize}**`);
+            const finalEmbed = EmbedBuilder.from(embed).setDescription(`❌ **Giveaway Ended:** No one joined.\n👑 **Hosted by:** ${hostUser}\n🎁 **Each winner gets:** **${prize}**`).setColor('#E74C3C');
             return await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
         }
 
         if (mode === 'clicker') {
             const winnerId = participants[0];
-            const finalEmbed = EmbedBuilder.from(embed).setDescription(`⚡ **CLICKER OVER!**\n👑 **Fastest Clicker:** <@${winnerId}>\nEach winner gets: **${prize}**`);
+            const finalEmbed = EmbedBuilder.from(embed).setDescription(`⚡ **CLICKER OVER!**\n👑 **Fastest Clicker:** <@${winnerId}>\n🎁 **Each winner gets:** **${prize}**`).setColor('#2ECC71');
             await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
             return await channel.send(`⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@${winnerId}>, you reacted the fastest and won **${prize}**! 🎉🏆`);
         }
 
         if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants[0]); }
         if (participants.length < winnerCount) {
-            const finalEmbed = EmbedBuilder.from(embed).setDescription(`❌ **Giveaway Ended:** Not enough participants.\nHosted by: ${hostUser}`);
+            const finalEmbed = EmbedBuilder.from(embed).setDescription(`❌ **Giveaway Ended:** Not enough participants.\n👑 **Hosted by:** ${hostUser}`).setColor('#E74C3C');
             return await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
         }
 
@@ -419,7 +419,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
         const winners = shuffled.slice(0, winnerCount);
         const winnersMention = winners.map(id => `<@${id}>`).join(', ');
 
-        const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎉 **GIVEAWAY ENDED!**\n👑 **Winner(s):** ${winnersMention}\nHosted by: ${hostUser}\nEach winner gets: **${prize}**`);
+        const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎉 **GIVEAWAY ENDED!**\n👑 **Winner(s):** ${winnersMention}\n👑 **Hosted by:** ${hostUser}\n🎁 **Each winner gets:** **${prize}**`).setColor('#2ECC71');
         await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
         await channel.send(`🎉 🧇 **CONGRATULATIONS** ${winnersMention}! You won **${prize}**! 🎁✨`);
 
@@ -458,7 +458,7 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
             if (sInt.user.id !== p1 && sInt.user.id !== p2) return sInt.reply({ content: "❌ You are not a winner!", ephemeral: true });
             if (choices[sInt.user.id]) return sInt.reply({ content: "⚠️ You already chose!", ephemeral: true });
             choices[sInt.user.id] = sInt.customId.replace('sos_', ''); await sInt.reply({ content: `✅ Choice registered!`, ephemeral: true });
-            if (choices[p1] && choices[choices[p2]]) {
+            if (choices[p1] && choices[p2]) {
                 sosColl.stop(); splitBtn.setDisabled(true); stealBtn.setDisabled(true);
                 await sosMsg.edit({ components: [new ActionRowBuilder().addComponents(splitBtn, stealBtn)] });
                 if (choices[p1] === 'split' && choices[p2] === 'split') { channel.send(`🤝 **SPLIT!** <@${p1}> and <@${p2}> share the prize: **${prize}**! 🎉`); }
@@ -491,4 +491,3 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
     }
 }
 client.login(process.env.DISCORD_TOKEN);
-
