@@ -253,7 +253,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.commandName === 'help') {
             const embed = new EmbedBuilder().setTitle('📋 Available Bot Commands Inventory').setColor('#F1C40F').setDescription('Here is a complete list of all the features integrated into this bot:')
                 .addFields(
-                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/gend <ID>` - Force ends a giveaway\n`/greroll <ID>` - Rerolls a winner 🎲\n`/gwblacklist <@user>` - Add a user to blacklist 🚫\n`/gwunblacklist <@user>` - Lift a user blacklist entry\n`/gwin [@user]` - Check wins & entries 🏆\n`/gwhost [@user]` - Check hosted giveaways count 👑\n`/gwlb` - Open server metrics leaderboard 📊\n`/statsreset <@user>` - Wipe profile analytics 🔄\n`/userinfo` - Shows profile insights\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fleches profile avatar\n`/infractions` - Displays warning history' },
+                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/gend <ID>` - Force ends a giveaway\n`/greroll <ID>` - Rerolls a winner 🎲\n`/gwblacklist <@user>` - Add a user to blacklist 🚫\n`/gwunblacklist <@user>` - Lift a user blacklist entry\n`/gwin [@user]` - Check wins & entries 🏆\n`/gwhost [@user]` - Check hosted giveaways count 👑\n`/gwlb` - Open server metrics leaderboard 📊\n`/statsreset <@user>` - Wipe profile analytics 🔄\n`/userinfo` - Shows profile insights\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches profile avatar\n`/infractions` - Displays warning history' },
                     { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID' },
                     { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway (Requires Staff privileges).' }
                 ).setFooter({ text: `Waffel's Giveaway Utility` });
@@ -339,7 +339,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (interaction.commandName === 'gwblacklist') {
             const target = interaction.options.getUser('target');
-            if (blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target} is already on the giveaway blacklist.`, ephemeral: true });
+            if (blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is already on the giveaway blacklist.`, ephemeral: true });
             
             blacklistDatabase.add(target.id);
             await interaction.reply({ content: `🚫 Successfully added \({target} (**\){target.tag}**) to the **@Giveaway Blacklist**.` });
@@ -362,7 +362,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (interaction.commandName === 'gwunblacklist') {
             const target = interaction.options.getUser('target');
-            if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target} is not currently blacklisted.`, ephemeral: true });
+            if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is not currently blacklisted.`, ephemeral: true });
             
             blacklistDatabase.delete(target.id);
             await interaction.reply({ content: `✅ Successfully removed \({target} (**\){target.tag}**) from the giveaway blacklist.` });
@@ -383,52 +383,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
     }
-
-    if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
-        const mode = interaction.values[0]; 
-        const modal = new ModalBuilder().setCustomId(`modal_waffel_${mode}`).setTitle(`Setup: ${mode.toUpperCase()} Mode 🧇`);
-        const pInput = new TextInputBuilder().setCustomId('input_prize').setLabel("What is the prize / amount?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 50m / Waffles").setRequired(true);
-        const dInput = new TextInputBuilder().setCustomId('input_duration').setLabel("Duration (e.g., 5h, 45s, 10m):").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 5h or 30s").setRequired(true);
-        const wInput = new TextInputBuilder().setCustomId('input_winners').setLabel("Number of winners:").setStyle(TextInputStyle.Short).setRequired(true);
-        const descInput = new TextInputBuilder().setCustomId('input_description').setLabel("Optional Title / Description:").setStyle(TextInputStyle.Paragraph).setPlaceholder("e.g., 1B / Flash (Leave blank for none)").setRequired(false);
-        
-        if (mode === 'sos' || mode === 'rps') { wInput.setPlaceholder("Must be 2").setValue("2"); } 
-        else if (mode === 'clicker') { wInput.setPlaceholder("Must be 1").setValue("1").setRequired(false); }
-        else { wInput.setPlaceholder("e.g., 1").setValue("1"); }
-        
-        modal.addComponents(new ActionRowBuilder().addComponents(pInput), new ActionRowBuilder().addComponents(dInput), new ActionRowBuilder().addComponents(wInput), new ActionRowBuilder().addComponents(descInput));
-        await interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_waffel_')) {
-        const mode = interaction.customId.replace('modal_waffel_', '');
-        const prize = interaction.fields.getTextInputValue('input_prize');
-        const durationStr = interaction.fields.getTextInputValue('input_duration');
-        const descriptionOpt = interaction.fields.getTextInputValue('input_description') || null;
-        let winners = parseInt(interaction.fields.getTextInputValue('input_winners'));
-        
-        function parseGiveawayDuration(str) {
-            if (!str) return null; const match = str.match(/^(\d+)(sec|s|m|h|d)/i); if (!match) return null;
-            const val = parseInt(match[1]); const unit = match[2].toLowerCase();
-            if (unit === 's' || unit === 'sec') return val * 1000; if (unit === 'm') return val * 60 * 1000;
-            if (unit === 'h') return val * 60 * 60 * 1000; if (unit === 'd') return val * 24 * 60 * 60 * 1000;
-            return null;
-        }
-
-        const durationMs = parseGiveawayDuration(durationStr);
-        if (!durationMs || durationMs <= 0) return interaction.reply({ content: "❌ Invalid duration format! Use formats like `45s`, `10m` or `5h`.", ephemeral: true });
-        if (isNaN(winners) || winners <= 0) winners = 1;
-        if ((mode === 'sos' || mode === 'rps') && winners !== 2) return interaction.reply({ content: "❌ Requires exactly 2 winners.", ephemeral: true });
-        if (mode === 'clicker') winners = 1;
-        
-        await interaction.reply({ content: `✅ Successfully created your ${mode.toUpperCase()} giveaway!`, ephemeral: true });
-
-        const hostStats = ensureUserStats(interaction.user.id);
-        hostStats.hosts += 1;
-
-        startGiveawayEngine(interaction.channel, durationMs, prize, winners, mode, descriptionOpt, interaction.user);
-    }
-});
         if (interaction.commandName === 'gwin') {
             const user = interaction.options.getUser('target') || interaction.user;
             const stats = ensureUserStats(user.id);
@@ -528,6 +482,52 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: `🔄 **Database Flush :** All giveaway stats for ${target} (**${target.tag}**) have been successfully reset to **0**.` });
         }
     }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
+        const mode = interaction.values[0]; 
+        const modal = new ModalBuilder().setCustomId(`modal_waffel_${mode}`).setTitle(`Setup: ${mode.toUpperCase()} Mode 🧇`);
+        const pInput = new TextInputBuilder().setCustomId('input_prize').setLabel("What is the prize / amount?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 50m / Waffles").setRequired(true);
+        const dInput = new TextInputBuilder().setCustomId('input_duration').setLabel("Duration (e.g., 5h, 45s, 10m):").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 5h or 30s").setRequired(true);
+        const wInput = new TextInputBuilder().setCustomId('input_winners').setLabel("Number of winners:").setStyle(TextInputStyle.Short).setRequired(true);
+        const descInput = new TextInputBuilder().setCustomId('input_description').setLabel("Optional Title / Description:").setStyle(TextInputStyle.Paragraph).setPlaceholder("e.g., 1B / Flash (Leave blank for none)").setRequired(false);
+        
+        if (mode === 'sos' || mode === 'rps') { wInput.setPlaceholder("Must be 2").setValue("2"); } 
+        else if (mode === 'clicker') { wInput.setPlaceholder("Must be 1").setValue("1").setRequired(false); }
+        else { wInput.setPlaceholder("e.g., 1").setValue("1"); }
+        
+        modal.addComponents(new ActionRowBuilder().addComponents(pInput), new ActionRowBuilder().addComponents(dInput), new ActionRowBuilder().addComponents(wInput), new ActionRowBuilder().addComponents(descInput));
+        await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_waffel_')) {
+        const mode = interaction.customId.replace('modal_waffel_', '');
+        const prize = interaction.fields.getTextInputValue('input_prize');
+        const durationStr = interaction.fields.getTextInputValue('input_duration');
+        const descriptionOpt = interaction.fields.getTextInputValue('input_description') || null;
+        let winners = parseInt(interaction.fields.getTextInputValue('input_winners'));
+        
+        function parseGiveawayDuration(str) {
+            if (!str) return null; const match = str.match(/^(\d+)(sec|s|m|h|d)/i); if (!match) return null;
+            const val = parseInt(match[1]); const unit = match[2].toLowerCase();
+            if (unit === 's' || unit === 'sec') return val * 1000; if (unit === 'm') return val * 60 * 1000;
+            if (unit === 'h') return val * 60 * 60 * 1000; if (unit === 'd') return val * 24 * 60 * 60 * 1000;
+            return null;
+        }
+
+        const durationMs = parseGiveawayDuration(durationStr);
+        if (!durationMs || durationMs <= 0) return interaction.reply({ content: "❌ Invalid duration format! Use formats like `45s`, `10m` or `5h`.", ephemeral: true });
+        if (isNaN(winners) || winners <= 0) winners = 1;
+        if ((mode === 'sos' || mode === 'rps') && winners !== 2) return interaction.reply({ content: "❌ Requires exactly 2 winners.", ephemeral: true });
+        if (mode === 'clicker') winners = 1;
+        
+        await interaction.reply({ content: `✅ Successfully created your ${mode.toUpperCase()} giveaway!`, ephemeral: true });
+
+        const hostStats = ensureUserStats(interaction.user.id);
+        hostStats.hosts += 1;
+
+        startGiveawayEngine(interaction.channel, durationMs, prize, winners, mode, descriptionOpt, interaction.user);
+    }
+});
 async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode, customTitle, hostUser) {
     const participants = [];
     const buttonLabel = mode === 'clicker' ? 'CLICK ME TO WIN! 🧇⚡' : 'Join the Giveaway! 🎉';
