@@ -205,8 +205,8 @@ async function handleModCommands(message, command, args) {
     if (command === 'rto') { await target.timeout(null); return message.channel.send(`🗣️ **${target.user.tag}** timeout removed!`); }
 
     if (command === 'to') {
-        let timeArg = args[1]; let durationMs = parseDuration(timeArg);
-        let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
+        let timeArg = args[0]; let durationMs = parseDuration(timeArg);
+        let reason = durationMs ? args.slice(1).join(' ') : args.join(' ') || "No reason provided";
         let finalDuration = durationMs || (60 * 1000);
         if (finalDuration > 28 * 24 * 60 * 60 * 1000) { finalDuration = 28 * 24 * 60 * 60 * 1000; timeArg = "28d (Discord Max)"; }
         await target.timeout(finalDuration, reason);
@@ -216,8 +216,8 @@ async function handleModCommands(message, command, args) {
     if (command === 'kick') { const reason = args.slice(1).join(' ') || "No reason provided"; await target.kick(reason); return message.channel.send(`👢 **${target.user.tag}** kicked. Reason: ${reason}`); }
 
     if (command === 'ban') {
-        let timeArg = args[1]; let durationMs = parseDuration(timeArg);
-        let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
+        let timeArg = args[0]; let durationMs = parseDuration(timeArg);
+        let reason = durationMs ? args.slice(1).join(' ') : args.join(' ') || "No reason provided";
         await target.ban({ reason }); message.channel.send(`🔨 **${target.user.tag}** banned. Reason: ${reason}`);
         if (durationMs) { setTimeout(async () => { await message.guild.members.unban(target.id).catch(() => null); message.channel.send(`🔓 **${target.user.tag}** temporary ban expired.`); }, durationMs); }
     }
@@ -342,7 +342,7 @@ client.on('interactionCreate', async (interaction) => {
             if (blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is already on the giveaway blacklist.`, ephemeral: true });
             
             blacklistDatabase.add(target.id);
-            await interaction.reply({ content: `🚫 Successfully added \({target} (**\){target.tag}**) to the **@Giveaway Blacklist**.` });
+            await interaction.reply({ content: `🚫 Successfully added target ({target.tag}) to the **@Giveaway Blacklist**.` });
 
             const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
             if (logChannel) {
@@ -365,7 +365,7 @@ client.on('interactionCreate', async (interaction) => {
             if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is not currently blacklisted.`, ephemeral: true });
             
             blacklistDatabase.delete(target.id);
-            await interaction.reply({ content: `✅ Successfully removed \({target} (**\){target.tag}**) from the giveaway blacklist.` });
+            await interaction.reply({ content: `✅ Successfully removed target ({target.tag}) from the giveaway blacklist.` });
 
             const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
             if (logChannel) {
