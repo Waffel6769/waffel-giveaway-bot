@@ -18,7 +18,7 @@ const client = new Client({
 
 const warnDatabase = {};
 const blacklistDatabase = new Set();
-const giveawayStatsDatabase = new Map(); // Stockage : { userId: { wins: 0, entries: 0, hosts: 0 } }
+const giveawayStatsDatabase = new Map(); // Base de données des statistiques en mémoire
 const app = express();
 
 // ⚙️ REMPLACEZ ICI PAR L'ID DE VOTRE SALON DE LOGS PRIVÉ
