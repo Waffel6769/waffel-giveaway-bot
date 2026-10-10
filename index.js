@@ -369,21 +369,31 @@ client.on('interactionCreate', async (interaction) => {
             const lastGiveaway = cachedMessages.find(msg => 
                 msg.author.id === client.user.id && 
                 msg.embeds.length > 0 && 
-                (msg.embeds[0].description && (msg.embeds[0].description.includes('GIVEAWAY ENDED!') || msg.embeds[0].description.includes('CLICKER OVER!')))
+                msg.embeds[0].description && 
+                (msg.embeds[0].description.includes('GIVEAWAY ENDED!') || msg.embeds[0].description.includes('CLICKER OVER!'))
             );
 
             if (!lastGiveaway) {
                 return interaction.editReply({ content: "❌ No recently finished giveaway found in the last 100 messages of this channel." });
             }
 
+            // Récupérer le premier embed (le seul actif)
             const embedData = lastGiveaway.embeds[0];
             
             // Extraction intelligente des gagnants et du lot depuis la description d'origine
-            const winnerMatch = embedData.description.match(/Winner\(s\): (.+)|Fastest Clicker: (.+)/);
-            const prizeMatch = embedData.description.match(/Each winner gets: \*\*(.+)\*\*/);
+            const winnerMatch = embedData.description.match(/🏆? \*\*Winner\(s\):\*\* (.+)|👑? \*\*Winner\(s\):\*\* (.+)|👑? \*\*Fastest Clicker:\*\* (.+)/i);
+            const prizeMatch = embedData.description.match(/🎁 \*\*Each winner gets:\*\* \*\*(.+)\*\*|🎁 \*\*Each winner gets:\*\* (.+)/i);
 
-            const winnersInfo = winnerMatch ? (winnerMatch[1] || winnerMatch[2]) : "Unknown Winner";
-            const prizeInfo = prizeMatch ? prizeMatch[1] : "Unknown Prize";
+            // Nettoyage et assignation des valeurs trouvées
+            let winnersInfo = "Unknown Winner";
+            if (winnerMatch) {
+                winnersInfo = winnerMatch[1] || winnerMatch[2] || winnerMatch[3] || "Unknown Winner";
+            }
+            
+            let prizeInfo = "Unknown Prize";
+            if (prizeMatch) {
+                prizeInfo = prizeMatch[1] || prizeMatch[2] || "Unknown Prize";
+            }
 
             // Bouton de saut direct pour se rendre sur le message original
             const jumpButton = new ButtonBuilder()
