@@ -342,7 +342,7 @@ client.on('interactionCreate', async (interaction) => {
             if (blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is already on the giveaway blacklist.`, ephemeral: true });
             
             blacklistDatabase.add(target.id);
-            await interaction.reply({ content: `🚫 Successfully added target ({target.tag}) to the **@Giveaway Blacklist**.` });
+            await interaction.reply({ content: `🚫 Successfully added \${target} to the **@Giveaway Blacklist**.` });
 
             const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
             if (logChannel) {
@@ -365,7 +365,7 @@ client.on('interactionCreate', async (interaction) => {
             if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is not currently blacklisted.`, ephemeral: true });
             
             blacklistDatabase.delete(target.id);
-            await interaction.reply({ content: `✅ Successfully removed target ({target.tag}) from the giveaway blacklist.` });
+            await interaction.reply({ content: `✅ Successfully removed \${target} from the giveaway blacklist.` });
 
             const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
             if (logChannel) {
@@ -429,7 +429,7 @@ client.on('interactionCreate', async (interaction) => {
 
             if (lbType === 'winners') {
                 embedTitle = '🥇 GIVEAWAY WINNERS LEADERBOARD 🥇';
-                sortedArray.sort((a, b) => b[1].wins - a[1].wins);
+                sortedArray.sort((a, b) => b.wins - a.wins);
                 
                 const top10 = sortedArray.slice(0, 10);
                 if (top10.length === 0) leaderboardDescription = '*No logged data yet.*';
@@ -440,7 +440,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
             } else if (lbType === 'hosters') {
                 embedTitle = '👑 GIVEAWAY HOSTERS LEADERBOARD 👑';
-                sortedArray.sort((a, b) => b[1].hosts - a[1].hosts);
+                sortedArray.sort((a, b) => b.hosts - a.hosts);
                 
                 const top10 = sortedArray.slice(0, 10);
                 if (top10.length === 0) leaderboardDescription = '*No logged data yet.*';
