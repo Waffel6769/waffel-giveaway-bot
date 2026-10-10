@@ -17,8 +17,11 @@ const client = new Client({
 });
 
 const warnDatabase = {};
-const blacklistDatabase = new Set(); // Base de données en mémoire pour les utilisateurs blacklistés
+const blacklistDatabase = new Set();
 const app = express();
+
+// ⚙️ METTEZ ICI L'ID DE VOTRE SALON DE LOGS PRIVÉ
+const LOG_CHANNEL_ID = '1541351999948193845'; 
 
 const commands = [
     new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
@@ -41,7 +44,6 @@ const commands = [
     new SlashCommandBuilder().setName('wjamal').setDescription('Send a random funny frog GIF 🐸'),
     new SlashCommandBuilder().setName('claimtime').setDescription('Display official giveaway claim times and rules 🕐')
 ].map(cmd => cmd.toJSON());
-
 client.once('ready', async () => {
     console.log(`✨ Waffel's Giveaway Bot is logged in as ${client.user.tag}!`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -203,7 +205,6 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    // Restriction des commandes de blacklist aux personnes avec le rôle ou la permission Admin
     if (interaction.isChatInputCommand() && ['gwblacklist', 'gwunblacklist'].includes(interaction.commandName)) {
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({ content: "❌ This command is strictly restricted to **Server Administrators**.", ephemeral: true });
@@ -221,7 +222,6 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: "❌ Permission denied. This action is restricted to Staff.", ephemeral: true });
         }
     }
-
     if (interaction.isChatInputCommand()) {
         const targetUser = interaction.options.getUser('target') || interaction.user;
         const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
@@ -229,7 +229,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.commandName === 'help') {
             const embed = new EmbedBuilder().setTitle('📋 Available Bot Commands Inventory').setColor('#F1C40F').setDescription('Here is a complete list of all the features integrated into this bot:')
                 .addFields(
-                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/gend <ID>` - Force ends a giveaway\n`/greroll <ID>` - Rerolls a winner 🎲\n`/userinfo` - Shows profile insights\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches profile avatar\n`/infractions` - Displays warning history' },
+                    { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/gend <ID>` - Force ends a giveaway\n`/greroll <ID>` - Rerolls a winner 🎲\n`/gwblacklist <@user>` - Add a tricheur to blacklist 🚫\n`/gwunblacklist <@user>` - Lift a user blacklist entry\n`/userinfo` - Shows profile insights\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches profile avatar\n`/infractions` - Displays warning history' },
                     { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID' },
                     { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway (Requires Staff privileges).' }
                 ).setFooter({ text: `Waffel's Giveaway Utility` });
@@ -306,21 +306,53 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply({ content: "🎲 **Rerolling a new winner...**", ephemeral: true });
             const randomMember = interaction.guild.members.cache.filter(m => !m.user.bot && !blacklistDatabase.has(m.id)).random();
             if (!randomMember) return interaction.followUp({ content: "❌ Could not find eligible participants to reroll.", ephemeral: true });
-            return interaction.channel.send(`🎲 **NEW REROLL WINNER!** Congratulations ${randomMember}, you won **${prize}**! 🎁✨`);
+            return interaction.channel.send(`🎲 **NEW REROLL WINNER!** Congratulations \${randomMember}, you won **\${prize}**! 🎁✨`);
         }
 
         if (interaction.commandName === 'gwblacklist') {
             const target = interaction.options.getUser('target');
-            if (blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ ${target} is already on the giveaway blacklist.`, ephemeral: true });
+            if (blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target} is already on the giveaway blacklist.`, ephemeral: true });
+            
             blacklistDatabase.add(target.id);
-            return interaction.reply({ content: `🚫 Successfully added ${target} (**${target.tag}**) to the **@Giveaway Blacklist**.` });
+            await interaction.reply({ content: `🚫 Successfully added \({target} (**\){target.tag}**) to the **@Giveaway Blacklist**.` });
+
+            const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+            if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setTitle('🚫 User Blacklisted from Giveaways')
+                    .setColor('#E74C3C')
+                    .addFields(
+                        { name: '👤 Target User', value: `target ({target.tag})`, inline: true },
+                        { name: '🛡️ Moderator', value: `interaction.user ({interaction.user.tag})`, inline: true },
+                        { name: '🆔 User ID', value: `\`${target.id}\``, inline: false }
+                    )
+                    .setTimestamp();
+                await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
+            }
+            return;
         }
 
         if (interaction.commandName === 'gwunblacklist') {
             const target = interaction.options.getUser('target');
-            if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ ${target} is not currently blacklisted.`, ephemeral: true });
+            if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target} is not currently blacklisted.`, ephemeral: true });
+            
             blacklistDatabase.delete(target.id);
-            return interaction.reply({ content: `✅ Successfully removed ${target} (**${target.tag}**) from the giveaway blacklist.` });
+            await interaction.reply({ content: `✅ Successfully removed \({target} (**\){target.tag}**) from the giveaway blacklist.` });
+
+            const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+            if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setTitle('✅ User Unblacklisted from Giveaways')
+                    .setColor('#2ECC71')
+                    .addFields(
+                        { name: '👤 Target User', value: `target ({target.tag})`, inline: true },
+                        { name: '🛡️ Moderator', value: `interaction.user ({interaction.user.tag})`, inline: true },
+                        { name: '🆔 User ID', value: `\`${target.id}\``, inline: false }
+                    )
+                    .setTimestamp();
+                await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
+            }
+            return;
         }
     }
 
@@ -365,7 +397,6 @@ client.on('interactionCreate', async (interaction) => {
         startGiveawayEngine(interaction.channel, durationMs, prize, winners, mode, descriptionOpt, interaction.user);
     }
 });
-
 async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode, customTitle, hostUser) {
     const participants = [];
     const buttonLabel = mode === 'clicker' ? 'CLICK ME TO WIN! 🧇⚡' : 'Join the Giveaway! 🎉';
@@ -389,7 +420,6 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
 
     collector.on('collect', async (btnInt) => {
         if (btnInt.customId === 'enter_giveaway') {
-            // BLOCAGE EN TEMPS RÉEL DE LA BLACKLIST (Pour tous les modes y compris Clicker)
             if (blacklistDatabase.has(btnInt.user.id)) {
                 return btnInt.reply({ content: "❌ **Entry Denied.** You have been blacklisted from participating in giveaways by the administration.", ephemeral: true });
             }
@@ -444,7 +474,6 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
             return await channel.send(`⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@${winnerId}>, you reacted the fastest and won **${prize}**! 🎉🏆`);
         }
 
-        // Nettoyage au cas où un utilisateur aurait été blacklisté pendant la durée du tirage
         const validParticipants = participants.filter(id => !blacklistDatabase.has(id));
 
         if ((mode === 'sos' || mode === 'rps') && validParticipants.length === 1) { validParticipants.push(validParticipants[0]); }
@@ -529,3 +558,4 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
     }
 }
 client.login(process.env.DISCORD_TOKEN);
+
