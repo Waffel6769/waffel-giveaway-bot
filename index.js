@@ -21,8 +21,8 @@ const blacklistDatabase = new Set();
 const giveawayStatsDatabase = new Map(); // Base de données des statistiques en mémoire
 const app = express();
 
-// ⚙️ REMPLACEZ ICI PAR L'ID DE VOTRE SALON DE LOGS PRIVÉ
-const LOG_CHANNEL_ID = '123456789012345678'; 
+// ⚙️ ID DE VOTRE SALON DE LOGS PRIVÉ
+const LOG_CHANNEL_ID = '1541351999948193845'; 
 
 // Fonction utilitaire pour initialiser les statistiques d'un joueur
 function ensureUserStats(userId) {
@@ -64,6 +64,7 @@ const commands = [
     new SlashCommandBuilder().setName('wjamal').setDescription('Send a random funny frog GIF 🐸'),
     new SlashCommandBuilder().setName('claimtime').setDescription('Display official giveaway claim times and rules 🕐')
 ].map(cmd => cmd.toJSON());
+
 client.once('ready', async () => {
     console.log(`✨ Waffel's Giveaway Bot is logged in as ${client.user.tag}!`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -74,7 +75,6 @@ client.once('ready', async () => {
         console.error(error); 
     }
 });
-
 app.get('/', (req, res) => {
     if (client && client.user) { 
         console.log(`📡 KeepAlive received! Bot status: ${client.user.presence.status}`); 
@@ -308,7 +308,7 @@ client.on('interactionCreate', async (interaction) => {
                     new StringSelectMenuOptionBuilder().setLabel('Rock Paper Scissors (RPS)').setDescription('RPS Battle!').setValue('rps').setEmoji('🪨')
                 );
             const row = new ActionRowBuilder().addComponents(menu);
-            const embed = new EmbedBuilder().setTitle('🧇 Waffel\'s Giveaway Setup Menu').setDescription('Please select a game mode below.').setColor('#F1C40F');
+            const embed = new EmbedBuilder().setTitle("🧇 Waffel's Giveaway Setup Menu").setDescription('Please select a game mode below.').setColor('#F1C40F');
             return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
         }
 
@@ -350,8 +350,8 @@ client.on('interactionCreate', async (interaction) => {
                     .setTitle('🚫 User Blacklisted from Giveaways')
                     .setColor('#E74C3C')
                     .addFields(
-                        { name: '👤 Target User', value: `target ({target.tag})`, inline: true },
-                        { name: '🛡️ Moderator', value: `interaction.user ({interaction.user.tag})`, inline: true },
+                        { name: '👤 Target User', value: `\({target} (\){target.tag})`, inline: true },
+                        { name: '🛡️ Moderator', value: `\({interaction.user} (\){interaction.user.tag})`, inline: true },
                         { name: '🆔 User ID', value: `\`${target.id}\``, inline: false }
                     )
                     .setTimestamp();
@@ -373,8 +373,8 @@ client.on('interactionCreate', async (interaction) => {
                     .setTitle('✅ User Unblacklisted from Giveaways')
                     .setColor('#2ECC71')
                     .addFields(
-                        { name: '👤 Target User', value: `target ({target.tag})`, inline: true },
-                        { name: '🛡️ Moderator', value: `interaction.user ({interaction.user.tag})`, inline: true },
+                        { name: '👤 Target User', value: `\({target} (\){target.tag})`, inline: true },
+                        { name: '🛡️ Moderator', value: `\({interaction.user} (\){interaction.user.tag})`, inline: true },
                         { name: '🆔 User ID', value: `\`${target.id}\``, inline: false }
                     )
                     .setTimestamp();
@@ -470,8 +470,8 @@ client.on('interactionCreate', async (interaction) => {
                     .setTitle('🔄 Giveaway Statistics Reset')
                     .setColor('#E67E22')
                     .addFields(
-                        { name: '👤 Target Account', value: `target ({target.tag})`, inline: true },
-                        { name: '🛡️ Executor Admin', value: `interaction.user ({interaction.user.tag})`, inline: true },
+                        { name: '👤 Target Account', value: `\({target} (\){target.tag})`, inline: true },
+                        { name: '🛡️ Executor Admin', value: `\({interaction.user} (\){interaction.user.tag})`, inline: true },
                         { name: '🆔 Account ID', value: `\`${target.id}\``, inline: false }
                     )
                     .setTimestamp();
@@ -481,7 +481,6 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: `🔄 **Database Flush :** All giveaway stats for ${target} (**${target.tag}**) have been successfully reset to **0**.` });
         }
     }
-
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
         const mode = interaction.values[0]; 
         const modal = new ModalBuilder().setCustomId(`modal_waffel_${mode}`).setTitle(`Setup: ${mode.toUpperCase()} Mode 🧇`);
@@ -545,7 +544,6 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
     const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor('#F1C40F').setTimestamp();
     const msg = await channel.send({ embeds: [embed], components: [row] });
     
-    const maxEntries = mode === 'clicker' ? 1 : undefined;
     const collector = msg.createMessageComponentCollector({ time: durationMs });
 
     collector.on('collect', async (btnInt) => {
@@ -729,4 +727,5 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
         });
     }
 }
+
 client.login(process.env.DISCORD_TOKEN);
