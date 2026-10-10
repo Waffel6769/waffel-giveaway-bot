@@ -20,9 +20,8 @@ const warnDatabase = {};
 const blacklistDatabase = new Set();
 const app = express();
 
-// ⚙️ METTEZ ICI L'ID DE VOTRE SALON DE LOGS PRIVÉ
-const LOG_CHANNEL_ID = '1541351999948193845'; 
-
+// ⚙️ REMPLACEZ ICI PAR L'ID DE VOTRE SALON DE LOGS PRIVÉ
+const LOG_CHANNEL_ID = '123456789012345678'; 
 const commands = [
     new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
     new SlashCommandBuilder().setName('gend').setDescription('Forcefully end an active giveaway instantly 🔒')
@@ -407,7 +406,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
     const endTimeStamp = Math.floor((Date.now() + durationMs) / 1000);
     const title = customTitle ? `🧇 ${customTitle} 🧇` : "✨ WAFFEL'S GIVEAWAY ✨";
 
-    let description = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **0**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **5 minutes**`;
+    let description = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **0**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **Do /claimtime**`;
     if (mode === 'clicker') { 
         description = `⚡ **WAFFLE CLICKER (SPEED GAME)** ⚡\n👑 **Hosted by:** ${hostUser}\n🎁 **Each winner gets:** **${prize}**\n\n🚨 The very **FIRST** person to click the green button wins instantly!`; 
     }
@@ -435,7 +434,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
                     return btnInt.reply({ content: "⚠️ You are already participating!", components: [leaveRow], ephemeral: true });
                 }
                 participants.push(btnInt.user.id);
-                let upDescription = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **${participants.length}**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **5 minutes**`;
+                let upDescription = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **${participants.length}**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **Do /claimtime**`;
                 const upEmbed = EmbedBuilder.from(embed).setDescription(upDescription);
                 await btnInt.update({ embeds: [upEmbed] });
                 await btnInt.followUp({ content: "✅ Successfully entered the giveaway!", ephemeral: true });
@@ -448,7 +447,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
             const index = participants.indexOf(btnInt.user.id);
             if (index > -1) {
                 participants.splice(index, 1);
-                let upDescription = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **${participants.length}**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **5 minutes**`;
+                let upDescription = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **${participants.length}**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **Do /claimtime**`;
                 const upEmbed = EmbedBuilder.from(embed).setDescription(upDescription);
                 await msg.edit({ embeds: [upEmbed] });
                 await btnInt.update({ content: "👋 You have successfully left this giveaway.", components: [] });
@@ -558,4 +557,3 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
     }
 }
 client.login(process.env.DISCORD_TOKEN);
-
