@@ -57,8 +57,10 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     if (message.content.startsWith('!gstart')) {
-        if (!message.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
-            return message.channel.send("❌ You need the **Giveaways Perm** role to start a giveaway.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        // Sécurisé pour le Staff via la permission de Timeout
+        if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+            return message.channel.send("❌ You need to be a **Staff Member** (with Timeout permissions) to start a giveaway.")
+                .then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         }
         setTimeout(() => message.delete().catch(() => null), 500);
         const args = message.content.slice('!gstart'.length).trim().split(/ +/);
@@ -179,20 +181,20 @@ async function handleModCommands(message, command, args) {
 }
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand() && ['gcreate', 'gend', 'greroll'].includes(interaction.commandName)) {
-        if (!interaction.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
-            return interaction.reply({ content: "❌ You must have the **Giveaways Perm** role to manage giveaways.", ephemeral: true });
+        if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+            return interaction.reply({ content: "❌ You must be a **Staff Member** (with Timeout permissions) to manage giveaways.", ephemeral: true });
         }
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
-        if (!interaction.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
-            return interaction.reply({ content: "❌ You don't have permission to interact with this setup menu.", ephemeral: true });
+        if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+            return interaction.reply({ content: "❌ You don't have Staff permissions to interact with this setup menu.", ephemeral: true });
         }
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_waffel_')) {
-        if (!interaction.member.roles.cache.some(r => r.name === 'Giveaways Perm')) {
-            return interaction.reply({ content: "❌ Session expired or permission denied to apply this giveaway setup.", ephemeral: true });
+        if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+            return interaction.reply({ content: "❌ Permission denied. This action is restricted to Staff.", ephemeral: true });
         }
     }
     if (interaction.isChatInputCommand()) {
@@ -204,7 +206,7 @@ client.on('interactionCreate', async (interaction) => {
                 .addFields(
                     { name: '✨ Slash Commands (/)', value: '`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/gcreate` - Opens the interactive Giveaway setup engine\n`/gend <ID>` - Force ends a giveaway\n`/greroll <ID>` - Rerolls a winner 🎲\n`/userinfo` - Shows profile insights\n`/serverinfo` - Displays key server statistics\n`/avatar` - Fetches profile avatar\n`/infractions` - Displays warning history' },
                     { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes messages\n`?roleadd @member @role` - Assigns a specific role\n`?to @member <duration>` - Timeout system\n`?rto @member` - Removes an active timeout\n`?warn @member <reason>` - Logs a warning\n`?unwarn @member` - Removes latest warning\n`?kick @member` - Kicks a user\n`?ban @member <duration>` - Bans a user\n`?unban <User_ID>` - Unbans a user via ID' },
-                    { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway (Requires Giveaways Perm role).' }
+                    { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway (Requires Staff permissions).' }
                 ).setFooter({ text: `Waffel's Giveaway Utility` });
             return interaction.reply({ embeds: [embed] });
         }
@@ -323,7 +325,7 @@ async function startGiveawayEngine(channel, duration, prize, winnerCount, mode) 
     if (mode === 'clicker') title = "WAFFEL'S WAFFLE CLICKER ⚡";
     if (mode === 'dok') title = "WAFFEL'S GIVEAWAY (DOUBLE OR KEEP 🟢)";
     if (mode === 'sos') title = "WAFFEL'S GIVEAWAY (SPLIT OR STEAL ⚔️)";
-    if (mode === 'rps') title = "WAFFEL'S GIVEAWAY (ROCK PAPER SCISSORS 🪨)";
+    if (mode === 'rps') title = "WAFFEL'S GIVEAWAY (ROCK PAPER SCISSORS RE)";
 
     let description = `🎁 **Prize:** ${prize}\n👑 **Winners:** ${winnerCount}\n\n📢 **How to enter:** Click the button below to join!\n⏳ **Time Remaining:** <t:${Math.floor((Date.now() + duration * 60 * 1000) / 1000)}:R>`;
     if (mode === 'clicker') { description = `🎁 **Prize:** ${prize}\n\n🚨 **SPEED GAME:** The very **FIRST** person to click the big green button below wins the prize instantly! Get ready! ⚡`; }
@@ -442,7 +444,6 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
             }
         });
     }
-
     if (mode === 'rps') {
         const p1 = winners[0]; const p2 = winners[1];
         const rBtn = new ButtonBuilder().setCustomId('rps_rock').setLabel('🪨 Rock').setStyle(ButtonStyle.Secondary);
@@ -467,4 +468,5 @@ async function handleMiniGames(channel, winners, prize, duration, winnerCount, m
     }
 }
 client.login(process.env.DISCORD_TOKEN);
+
 
