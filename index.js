@@ -6,6 +6,7 @@ const {
     TextInputBuilder, TextInputStyle, PermissionFlagsBits 
 } = require('discord.js');
 const express = require('express');
+const SQLite = require('better-sqlite3'); // Import de SQLite en remplacement de Map
 
 const client = new Client({ 
     intents: [
@@ -18,18 +19,40 @@ const client = new Client({
 
 const warnDatabase = {};
 const blacklistDatabase = new Set();
-const giveawayStatsDatabase = new Map(); // Base de données des statistiques en mémoire
+
+// Connexion et création automatique du fichier local de stockage permanent
+const db = new SQLite('./giveaway_stats.sqlite');
+db.pragma('journal_mode = WAL');
+
+// Création de la table de statistiques si elle n'existe pas
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS user_stats (
+        userId TEXT PRIMARY KEY,
+        wins INTEGER DEFAULT 0,
+        entries INTEGER DEFAULT 0,
+        hosts INTEGER DEFAULT 0
+    )
+`).run();
+
 const app = express();
 
 // ⚙️ ID DE VOTRE SALON DE LOGS PRIVÉ
 const LOG_CHANNEL_ID = '1541351999948193845'; 
 
-// Fonction utilitaire pour initialiser les statistiques d'un joueur
+// Fonction utilitaire adaptative pour récupérer ou insérer un utilisateur dans SQLite
 function ensureUserStats(userId) {
-    if (!giveawayStatsDatabase.has(userId)) {
-        giveawayStatsDatabase.set(userId, { wins: 0, entries: 0, hosts: 0 });
+    let row = db.prepare('SELECT * FROM user_stats WHERE userId = ?').get(userId);
+    if (!row) {
+        db.prepare('INSERT INTO user_stats (userId, wins, entries, hosts) VALUES (?, 0, 0, 0)').run(userId);
+        row = { userId, wins: 0, entries: 0, hosts: 0 };
     }
-    return giveawayStatsDatabase.get(userId);
+    return row;
+}
+
+// Fonction utilitaire pour mettre à jour les statistiques dans la base SQLite
+function updateUserStats(userId, stats) {
+    db.prepare('UPDATE user_stats SET wins = ?, entries = ?, hosts = ? WHERE userId = ?')
+      .run(stats.wins, stats.entries, stats.hosts, userId);
 }
 const commands = [
     new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
@@ -109,6 +132,7 @@ client.on('messageCreate', async (message) => {
         
         const hostStats = ensureUserStats(message.author.id);
         hostStats.hosts += 1;
+        updateUserStats(message.author.id, hostStats);
         
         startGiveawayEngine(message.channel, durationMs, prize, 1, 'normal', null, message.author);
         return;
@@ -333,6 +357,7 @@ client.on('interactionCreate', async (interaction) => {
             
             const stats = ensureUserStats(randomMember.id);
             stats.wins += 1;
+            updateUserStats(randomMember.id, stats);
 
             return interaction.channel.send(`🎲 **NEW REROLL WINNER!** Congratulations \${randomMember}, you won **\${prize}**! 🎁✨`);
         }
@@ -421,32 +446,30 @@ client.on('interactionCreate', async (interaction) => {
 
         if (interaction.commandName === 'gwlb') {
             const lbType = interaction.options.getString('type');
-            const sortedArray = Array.from(giveawayStatsDatabase.entries());
-
+            
             let embedTitle = '';
             let leaderboardDescription = '';
+            let rows = [];
 
             if (lbType === 'winners') {
                 embedTitle = '🥇 GIVEAWAY WINNERS LEADERBOARD 🥇';
-                sortedArray.sort((a, b) => b[1].wins - a[1].wins);
+                rows = db.prepare('SELECT * FROM user_stats ORDER BY wins DESC LIMIT 10').all();
                 
-                const top10 = sortedArray.slice(0, 10);
-                if (top10.length === 0) leaderboardDescription = '*No logged data yet.*';
+                if (rows.length === 0) leaderboardDescription = '*No logged data yet.*';
                 
-                top10.forEach((item, index) => {
+                rows.forEach((row, index) => {
                     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '▪️';
-                    leaderboardDescription += `\${medal} **#\({index + 1}** <@\){item[0]}> ➜ **\${item[1].wins}** win(s) *(Entries: \${item[1].entries})*\n`;
+                    leaderboardDescription += `\${medal} **#\({index + 1}** <@\){row.userId}> ➜ **\${row.wins}** win(s) *(Entries: \${row.entries})*\n`;
                 });
             } else if (lbType === 'hosters') {
                 embedTitle = '👑 GIVEAWAY HOSTERS LEADERBOARD 👑';
-                sortedArray.sort((a, b) => b[1].hosts - a[1].hosts);
+                rows = db.prepare('SELECT * FROM user_stats ORDER BY hosts DESC LIMIT 10').all();
                 
-                const top10 = sortedArray.slice(0, 10);
-                if (top10.length === 0) leaderboardDescription = '*No logged data yet.*';
+                if (rows.length === 0) leaderboardDescription = '*No logged data yet.*';
                 
-                top10.forEach((item, index) => {
+                rows.forEach((row, index) => {
                     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '▪️';
-                    leaderboardDescription += `\${medal} **#\({index + 1}** <@\){item[0]}> ➜ **\${item[1].hosts}** giveaway(s) hosted\n`;
+                    leaderboardDescription += `\${medal} **#\({index + 1}** <@\){row.userId}> ➜ **\${row.hosts}** giveaway(s) hosted\n`;
                 });
             }
 
@@ -462,7 +485,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (interaction.commandName === 'statsreset') {
             const target = interaction.options.getUser('target');
-            giveawayStatsDatabase.set(target.id, { wins: 0, entries: 0, hosts: 0 });
+            db.prepare('UPDATE user_stats SET wins = 0, entries = 0, hosts = 0 WHERE userId = ?').run(target.id);
 
             const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
             if (logChannel) {
@@ -522,6 +545,7 @@ client.on('interactionCreate', async (interaction) => {
 
         const hostStats = ensureUserStats(interaction.user.id);
         hostStats.hosts += 1;
+        updateUserStats(interaction.user.id, hostStats);
 
         startGiveawayEngine(interaction.channel, durationMs, prize, winners, mode, descriptionOpt, interaction.user);
     }
@@ -558,6 +582,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
                 const clickerStats = ensureUserStats(btnInt.user.id);
                 clickerStats.entries += 1;
                 clickerStats.wins += 1;
+                updateUserStats(btnInt.user.id, clickerStats);
 
                 await btnInt.reply({ content: "🧇 CRITICAL CLICK! Checking if you were the fastest...", ephemeral: true });
                 collector.stop();
@@ -571,6 +596,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
 
                 const playerStats = ensureUserStats(btnInt.user.id);
                 playerStats.entries += 1;
+                updateUserStats(btnInt.user.id, playerStats);
 
                 let upDescription = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **${participants.length}**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **Do /claimtime**`;
                 const upEmbed = EmbedBuilder.from(embed).setDescription(upDescription);
@@ -588,6 +614,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
                 
                 const playerStats = ensureUserStats(btnInt.user.id);
                 if (playerStats.entries > 0) playerStats.entries -= 1;
+                updateUserStats(btnInt.user.id, playerStats);
 
                 let upDescription = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **${participants.length}**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**\n⏱️ **Claim time:** **Do /claimtime**`;
                 const upEmbed = EmbedBuilder.from(embed).setDescription(upDescription);
@@ -631,6 +658,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
             winners.forEach(id => {
                 const stats = ensureUserStats(id);
                 stats.wins += 1;
+                updateUserStats(id, stats);
             });
         }
 
@@ -657,6 +685,7 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
             if (gInt.customId === 'dok_keep') { 
                 const wStats = ensureUserStats(winnerId);
                 wStats.wins += 1;
+                updateUserStats(winnerId, wStats);
                 await gInt.reply(`🔒 **Giveaway Ended... KEEP!** <@${winnerId}> kept their **${prize}**! GG! 🧇🎁`); 
             } else {
                 let newPrize = prize; const match = prize.match(/\d+/);
@@ -681,8 +710,8 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
                 sosColl.stop(); splitBtn.setDisabled(true); stealBtn.setDisabled(true);
                 await sosMsg.edit({ components: [new ActionRowBuilder().addComponents(splitBtn, stealBtn)] });
                 if (choices[p1] === 'split' && choices[p2] === 'split') { 
-                    ensureUserStats(p1).wins += 1;
-                    ensureUserStats(p2).wins += 1;
+                    const s1 = ensureUserStats(p1); s1.wins += 1; updateUserStats(p1, s1);
+                    const s2 = ensureUserStats(p2); s2.wins += 1; updateUserStats(p2, s2);
                     channel.send(`🤝 **SPLIT!** <@${p1}> and <@${p2}> share the prize: **${prize}**! 🎉`); 
                 }
                 else if (choices[p1] === 'steal' && choices[p2] === 'steal') { 
@@ -690,7 +719,7 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
                 }
                 else { 
                     const thief = choices[p1] === 'steal' ? p1 : p2; 
-                    ensureUserStats(thief).wins += 1;
+                    const sThief = ensureUserStats(thief); sThief.wins += 1; updateUserStats(thief, sThief);
                     channel.send(`😈 **BETRAYAL!** <@${thief}> stole everything and wins **${prize}**! 🏆`); 
                 }
             }
@@ -716,11 +745,11 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
                     channel.send(`🤝 **DRAW!** Both chose **${c1}**. Battle ends in a tie (No wins added)! 🧇`); 
                 }
                 else if ((c1 === 'rock' && c2 === 'scissors') || (c1 === 'paper' && c2 === 'rock') || (c1 === 'scissors' && c2 === 'paper')) { 
-                    ensureUserStats(p1).wins += 1;
+                    const sP1 = ensureUserStats(p1); sP1.wins += 1; updateUserStats(p1, sP1);
                     channel.send(`👑 **VICTORY!** <@${p1}> wins **${prize}**! ✨`); 
                 }
                 else { 
-                    ensureUserStats(p2).wins += 1;
+                    const sP2 = ensureUserStats(p2); sP2.wins += 1; updateUserStats(p2, sP2);
                     channel.send(`👑 **VICTORY!** <@${p2}> wins **${prize}**! ✨`); 
                 }
             }
