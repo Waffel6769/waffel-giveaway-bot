@@ -17,13 +17,19 @@ const client = new Client({
 });
 
 const warnDatabase = {};
+const blacklistDatabase = new Set(); // Base de données en mémoire pour les utilisateurs blacklistés
 const app = express();
+
 const commands = [
     new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway 🧇'),
     new SlashCommandBuilder().setName('gend').setDescription('Forcefully end an active giveaway instantly 🔒')
         .addStringOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
     new SlashCommandBuilder().setName('greroll').setDescription('Reroll a new winner for a finished giveaway 🎲')
         .addStringOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
+    new SlashCommandBuilder().setName('gwblacklist').setDescription('Blacklist a user from joining any giveaways 🚫')
+        .addUserOption(option => option.setName('target').setDescription('The user to blacklist').setRequired(true)),
+    new SlashCommandBuilder().setName('gwunblacklist').setDescription('Remove a user from the giveaway blacklist ✅')
+        .addUserOption(option => option.setName('target').setDescription('The user to unblacklist').setRequired(true)),
     new SlashCommandBuilder().setName('userinfo').setDescription('Display official profile information about a user 👤')
         .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Display key statistics about this server 📊'),
@@ -35,6 +41,7 @@ const commands = [
     new SlashCommandBuilder().setName('wjamal').setDescription('Send a random funny frog GIF 🐸'),
     new SlashCommandBuilder().setName('claimtime').setDescription('Display official giveaway claim times and rules 🕐')
 ].map(cmd => cmd.toJSON());
+
 client.once('ready', async () => {
     console.log(`✨ Waffel's Giveaway Bot is logged in as ${client.user.tag}!`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -196,6 +203,13 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
+    // Restriction des commandes de blacklist aux personnes avec le rôle ou la permission Admin
+    if (interaction.isChatInputCommand() && ['gwblacklist', 'gwunblacklist'].includes(interaction.commandName)) {
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return interaction.reply({ content: "❌ This command is strictly restricted to **Server Administrators**.", ephemeral: true });
+        }
+    }
+
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
         if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
             return interaction.reply({ content: "❌ You don't have Staff permissions to interact with this setup menu.", ephemeral: true });
@@ -207,6 +221,7 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: "❌ Permission denied. This action is restricted to Staff.", ephemeral: true });
         }
     }
+
     if (interaction.isChatInputCommand()) {
         const targetUser = interaction.options.getUser('target') || interaction.user;
         const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
@@ -289,9 +304,23 @@ client.on('interactionCreate', async (interaction) => {
             const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Each winner gets:\*\* (.+)/) : null;
             const prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
             await interaction.reply({ content: "🎲 **Rerolling a new winner...**", ephemeral: true });
-            const randomMember = interaction.guild.members.cache.filter(m => !m.user.bot).random();
-            if (!randomMember) return interaction.followUp({ content: "❌ Could not find active participants to reroll.", ephemeral: true });
+            const randomMember = interaction.guild.members.cache.filter(m => !m.user.bot && !blacklistDatabase.has(m.id)).random();
+            if (!randomMember) return interaction.followUp({ content: "❌ Could not find eligible participants to reroll.", ephemeral: true });
             return interaction.channel.send(`🎲 **NEW REROLL WINNER!** Congratulations ${randomMember}, you won **${prize}**! 🎁✨`);
+        }
+
+        if (interaction.commandName === 'gwblacklist') {
+            const target = interaction.options.getUser('target');
+            if (blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ ${target} is already on the giveaway blacklist.`, ephemeral: true });
+            blacklistDatabase.add(target.id);
+            return interaction.reply({ content: `🚫 Successfully added ${target} (**${target.tag}**) to the **@Giveaway Blacklist**.` });
+        }
+
+        if (interaction.commandName === 'gwunblacklist') {
+            const target = interaction.options.getUser('target');
+            if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ ${target} is not currently blacklisted.`, ephemeral: true });
+            blacklistDatabase.delete(target.id);
+            return interaction.reply({ content: `✅ Successfully removed ${target} (**${target.tag}**) from the giveaway blacklist.` });
         }
     }
 
@@ -336,6 +365,7 @@ client.on('interactionCreate', async (interaction) => {
         startGiveawayEngine(interaction.channel, durationMs, prize, winners, mode, descriptionOpt, interaction.user);
     }
 });
+
 async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode, customTitle, hostUser) {
     const participants = [];
     const buttonLabel = mode === 'clicker' ? 'CLICK ME TO WIN! 🧇⚡' : 'Join the Giveaway! 🎉';
@@ -355,10 +385,15 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
     const msg = await channel.send({ embeds: [embed], components: [row] });
     
     const maxEntries = mode === 'clicker' ? 1 : undefined;
-    const collector = msg.createMessageComponentCollector({ time: durationMs, max: maxEntries });
+    const collector = msg.createMessageComponentCollector({ time: durationMs });
 
     collector.on('collect', async (btnInt) => {
         if (btnInt.customId === 'enter_giveaway') {
+            // BLOCAGE EN TEMPS RÉEL DE LA BLACKLIST (Pour tous les modes y compris Clicker)
+            if (blacklistDatabase.has(btnInt.user.id)) {
+                return btnInt.reply({ content: "❌ **Entry Denied.** You have been blacklisted from participating in giveaways by the administration.", ephemeral: true });
+            }
+
             if (mode === 'clicker') {
                 participants.push(btnInt.user.id);
                 await btnInt.reply({ content: "🧇 CRITICAL CLICK! Checking if you were the fastest...", ephemeral: true });
@@ -409,13 +444,16 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
             return await channel.send(`⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@${winnerId}>, you reacted the fastest and won **${prize}**! 🎉🏆`);
         }
 
-        if ((mode === 'sos' || mode === 'rps') && participants.length === 1) { participants.push(participants[0]); }
-        if (participants.length < winnerCount) {
-            const finalEmbed = EmbedBuilder.from(embed).setDescription(`❌ **Giveaway Ended:** Not enough participants.\n👑 **Hosted by:** ${hostUser}`).setColor('#E74C3C');
+        // Nettoyage au cas où un utilisateur aurait été blacklisté pendant la durée du tirage
+        const validParticipants = participants.filter(id => !blacklistDatabase.has(id));
+
+        if ((mode === 'sos' || mode === 'rps') && validParticipants.length === 1) { validParticipants.push(validParticipants[0]); }
+        if (validParticipants.length < winnerCount) {
+            const finalEmbed = EmbedBuilder.from(embed).setDescription(`❌ **Giveaway Ended:** Not enough eligible participants.\n👑 **Hosted by:** ${hostUser}`).setColor('#E74C3C');
             return await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
         }
 
-        const shuffled = participants.sort(() => 0.5 - Math.random());
+        const shuffled = validParticipants.sort(() => 0.5 - Math.random());
         const winners = shuffled.slice(0, winnerCount);
         const winnersMention = winners.map(id => `<@${id}>`).join(', ');
 
