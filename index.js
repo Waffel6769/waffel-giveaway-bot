@@ -266,6 +266,44 @@ client.on('interactionCreate', async (interaction) => {
                 ).setFooter({ text: `Waffel's Giveaway Utility` });
             return interaction.reply({ embeds: [embed] });
         }
+        if (interaction.commandName === 'claimtime') {
+            const embed = new EmbedBuilder().setTitle('🎉 Giveaway Info').setColor('#F1C40F').setDescription(
+                `¼ **Giveaway Claim Time**\n🏆 Quickdrops - 30 Minutes\n🎁 Weekly/Daily Giveaways - 24 hours\n🎉 Big Giveaways - 12 hours\n🏮 Stream Quickdrops - 3 Hours\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬` 
+            ).setTimestamp();
+            return interaction.reply({ embeds: [embed] });
+        }
+
+        if (interaction.commandName === 'wjamal') {
+            const frogGifs = ['https://giphy.com', 'https://giphy.com', 'https://giphy.com', 'https://giphy.com', 'https://giphy.com'];
+            const randomFrog = frogGifs[Math.floor(Math.random() * frogGifs.length)];
+            const embed = new EmbedBuilder().setTitle('🐸 W JAMAL').setColor('#2ECC71').setImage(randomFrog);
+            return interaction.reply({ embeds: [embed] });
+        }
+
+        if (interaction.commandName === 'userinfo') {
+            const embed = new EmbedBuilder().setTitle(`👤 User Info - ${targetUser.tag}`).setColor('#F1C40F').setThumbnail(targetUser.displayAvatarURL())
+                .addFields({ name: '🆔 User ID', value: targetUser.id, inline: true }, { name: '📅 Created Account', value: `<t:${Math.floor(targetUser.createdTimestamp / 1000)}:R>`, inline: true }, { name: '🤖 Bot?', value: targetUser.bot ? 'Yes' : 'No', inline: true });
+            return interaction.reply({ embeds: [embed] });
+        }
+
+        if (interaction.commandName === 'serverinfo') {
+            const embed = new EmbedBuilder().setTitle(`📊 Server Info - ${interaction.guild.name}`).setColor('#F1C40F').setThumbnail(interaction.guild.iconURL())
+                .addFields({ name: '👑 Owner', value: `<@${interaction.guild.ownerId}>`, inline: true }, { name: '👥 Total Members', value: `${interaction.guild.memberCount}`, inline: true }, { name: '📁 Channel Count', value: `${interaction.guild.channels.cache.size}`, inline: true });
+            return interaction.reply({ embeds: [embed] });
+        }
+
+        if (interaction.commandName === 'avatar') {
+            const embed = new EmbedBuilder().setTitle(`🖼️ Avatar of ${targetUser.tag}`).setColor('#F1C40F').setImage(targetUser.displayAvatarURL({ size: 1024 })).setFooter({ text: `Waffel's Giveaway Utility` });
+            return interaction.reply({ embeds: [embed] });
+        }
+
+        if (interaction.commandName === 'infractions') {
+            const warns = warnDatabase[targetUser.id] || [];
+            const embed = new EmbedBuilder().setTitle(`📜 Moderation History for ${targetUser.username}`).setColor(warns.length > 0 ? '#E74C3C' : '#2ECC71');
+            if (warns.length === 0) { embed.setDescription(`✅ This user has a perfectly clean record. No infractions found!`); } 
+            else { embed.setDescription(`⚠️ Total Warnings: **${warns.length}**`); warns.forEach((warn, index) => { embed.addFields({ name: `Warning #${index + 1} (${warn.date})`, value: `**Reason:** ${warn.reason}\n**Moderator:** ${warn.moderator}` }); }); }
+            return interaction.reply({ embeds: [embed] });
+        }
         if (interaction.commandName === 'gcreate') {
             const menu = new StringSelectMenuBuilder().setCustomId('select_waffel_mode').setPlaceholder('🎯 Choose a Giveaway Game Mode...')
                 .addOptions(
@@ -488,11 +526,14 @@ client.on('interactionCreate', async (interaction) => {
 
         await interaction.deferReply({ ephemeral: true });
 
+        // Votre ID de staff configuré en dur de manière sécurisée
+        const SECURE_STAFF_ROLE_ID = '1423749610395930707';
+
         try {
-            const ticketChannel = await interaction.guild.channels.create({
+            // Options de création du salon de ticket
+            const channelOptions = {
                 name: `ticket-${interaction.user.username}`,
                 type: ChannelType.GuildText,
-                parent: TICKET_CATEGORY_ID || null,
                 permissionOverwrites: [
                     {
                         id: interaction.guild.roles.everyone.id,
@@ -503,16 +544,31 @@ client.on('interactionCreate', async (interaction) => {
                         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
                     },
                     {
-                        id: STAFF_ROLE_ID,
+                        id: SECURE_STAFF_ROLE_ID,
                         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
                     }
                 ],
-            });
+            };
+
+            // On vérifie si TICKET_CATEGORY_ID est valide, sinon on ne met pas de catégorie parent
+            if (typeof TICKET_CATEGORY_ID !== 'undefined' && TICKET_CATEGORY_ID && TICKET_CATEGORY_ID !== '123456789012345678') {
+                channelOptions.parent = TICKET_CATEGORY_ID;
+            }
+
+            // Création automatique du salon
+            const ticketChannel = await interaction.guild.channels.create(channelOptions);
+
+            // Création du bouton rouge pour fermer le ticket
+            const closeBtn = new ButtonBuilder()
+                .setCustomId('close_giveaway_ticket')
+                .setLabel('Close Ticket 🔴')
+                .setStyle(ButtonStyle.Danger);
+            const closeRow = new ActionRowBuilder().addComponents(closeBtn);
 
             const ticketEmbed = new EmbedBuilder()
                 .setTitle('📥 New Giveaway Claim Ticket Opened')
                 .setColor('#2ECC71')
-                .setDescription(`Welcome ${interaction.user}, our support team will handle your reward transaction shortly!`)
+                .setDescription(`Welcome ${interaction.user}, our support team will handle your reward transaction shortly!\n\n*Staff members can click the red button below to close and delete this channel.*`)
                 .addFields(
                     { name: '🎁 Prize / Amount Won', value: prizeAmount, inline: true },
                     { name: '🎮 In-Game Name (IGN)', value: ignName, inline: true },
@@ -521,13 +577,36 @@ client.on('interactionCreate', async (interaction) => {
                 .setFooter({ text: "Waffel's Automated Tickets" })
                 .setTimestamp();
 
-            await ticketChannel.send({ content: `🔔 <@&${STAFF_ROLE_ID}> | New claim request from ${interaction.user}`, embeds: [ticketEmbed] });
+            await ticketChannel.send({ 
+                content: `🔔 <@&${SECURE_STAFF_ROLE_ID}> | New claim request from ${interaction.user}`, 
+                embeds: [ticketEmbed],
+                components: [closeRow]
+            });
+            
             await interaction.editReply({ content: `✅ Your ticket channel has been created successfully: ${ticketChannel}` });
 
         } catch (error) {
-            console.error(error);
-            await interaction.editReply({ content: "❌ An error occurred while auto-generating your private ticket channel. Contact an administrator." });
+            console.error("DEBUG ERROR TICKET:", error);
+            await interaction.editReply({ content: "❌ An error occurred while auto-generating your private ticket channel. Make sure the bot has the **Manage Channels** permission." });
         }
+    }
+
+    // Détecter le clic sur le bouton rouge "Close Ticket"
+    if (interaction.isButton() && interaction.customId === 'close_giveaway_ticket') {
+        const SECURE_STAFF_ROLE_ID = '1423749610395930707';
+        
+        // Vérification de sécurité : Seul le staff ou l'administrateur peut fermer le ticket
+        if (!interaction.member.roles.cache.has(SECURE_STAFF_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return interaction.reply({ content: "❌ Only Staff Members are authorized to close giveaway claim tickets.", ephemeral: true });
+        }
+
+        await interaction.reply({ content: "🔒 **Closing ticket...** This channel will be deleted in 5 seconds." });
+        
+        // Attendre 5 secondes avant de supprimer définitivement le salon pour laisser le temps de lire le message
+        setTimeout(async () => {
+            await interaction.channel.delete().catch(() => null);
+        }, 5000);
+        return;
     }
 
     if (interaction.isButton() && interaction.customId === 'claim_giveaway_ticket') {
@@ -671,3 +750,4 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
     });
 }
 client.login(process.env.DISCORD_TOKEN);
+
