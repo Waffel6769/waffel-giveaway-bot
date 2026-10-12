@@ -752,6 +752,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
         const rawPrizeB64 = Buffer.from(prize).toString('base64');
         const rawHostB64 = Buffer.from(`${hostUser}`).toString('base64');
 
+        // Mode Clicker : Donne le bouton Claim instantanément (Pas de mini-jeu)
         if (mode === 'clicker') {
             const winnerId = participants[0];
             initStats(winnerId);
@@ -781,24 +782,28 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
         const winners = shuffled.slice(0, winnerCount);
         const winnersMention = winners.map(id => `<@${id}>`).join(', ');
 
-        winners.forEach(wId => {
-            initStats(wId);
-            statsDatabase[wId].won += 1;
-        });
-        saveDatabase();
-
-        const primaryWinnerId = winners[0];
-        const secureClaimBtn = new ButtonBuilder().setCustomId(`claim_gw_${primaryWinnerId}_${rawPrizeB64}_${rawHostB64}`).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
-        const claimRow = new ActionRowBuilder().addComponents(secureClaimBtn);
-
         const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎉 **GIVEAWAY ENDED!**\n👑 **Winner(s):** ${winnersMention}\n👑 **Hosted by:** ${hostUser}\n🎁 **Each winner gets:** **${prize}**`).setColor('#2ECC71');
         await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
-        
-        await channel.send({
-            content: `🎉  waffle **CONGRATULATIONS** ${winnersMention}! You won **${prize}**! 🎁✨\nClick the button below to open your ticket!`,
-            components: [claimRow]
-        });
 
+        // Mode Normal : Donne le bouton Claim immédiatement
+        if (mode === 'normal') {
+            winners.forEach(wId => {
+                initStats(wId);
+                statsDatabase[wId].won += 1;
+            });
+            saveDatabase();
+
+            const primaryWinnerId = winners[0];
+            const secureClaimBtn = new ButtonBuilder().setCustomId(`claim_gw_${primaryWinnerId}_${rawPrizeB64}_${rawHostB64}`).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
+            const claimRow = new ActionRowBuilder().addComponents(secureClaimBtn);
+
+            await channel.send({
+                content: `🎉  waffle **CONGRATULATIONS** ${winnersMention}! You won **${prize}**! 🎁✨\nClick the button below to open your ticket!`,
+                components: [claimRow]
+            });
+        }
+
+        // Lance la suite pour les mini-jeux (DoK, SoS, RPS s'occuperont d'afficher le bouton eux-mêmes à la fin)
         handleMiniGames(channel, winners, prize, durationMs, winnerCount, mode, hostUser);
     });
 }
@@ -824,15 +829,18 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
             await gameMsg.edit({ components: [new ActionRowBuilder().addComponents(doubleBtn, keepBtn)] });
             
             if (gInt.customId === 'dok_keep') { 
+                // Enregistrement des statistiques de victoire UNIQUEMENT au moment du "Keep"
+                initStats(winnerId);
+                statsDatabase[winnerId].won += 1;
+                saveDatabase();
+
                 claimBtn.setCustomId(`claim_gw_${winnerId}_${rawPrizeB64}_${rawHostB64}`);
                 await gInt.reply({ content: `🔒 **Giveaway Ended... KEEP!** <@${winnerId}> kept their **${prize}**! GG! 🧇🎁`, components: [claimRow] }); 
             } else {
-                if (statsDatabase[winnerId] && statsDatabase[winnerId].won > 0) statsDatabase[winnerId].won -= 1;
-                
+                // S'ils doublent, aucune victoire n'est validée pour le moment puisqu'on relance un tirage complet
                 let newPrize = prize; const match = prize.match(/\d+/);
                 if (match) { const oldN = parseInt(match[0]); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = `2x ${prize}`; }
                 await gInt.reply(`🟢 **DOUBLE ACTIVATED!** New reward: **${newPrize}**! Re-rolling in 5s... 🚀`);
-                saveDatabase();
                 setTimeout(() => startGiveawayEngine(channel, durationMs, newPrize, winnerCount, 'dok', "DOUBLE OR KEEP", originHost), 5000);
             }
         });
@@ -845,9 +853,6 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
         const sosRow = new ActionRowBuilder().addComponents(splitBtn, stealBtn);
         const sosMsg = await channel.send({ content: `⚔️ <@${p1}> and <@${p2}>! You both won! Choose **Split** 🟢 or **Steal** 🔴!`, components: [sosRow] });
         const choices = {}; const sosColl = sosMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
-        
-        if (statsDatabase[p1] && statsDatabase[p1].won > 0) statsDatabase[p1].won -= 1;
-        if (statsDatabase[p2] && statsDatabase[p2].won > 0) statsDatabase[p2].won -= 1;
 
         sosColl.on('collect', async (sInt) => {
             if (sInt.user.id !== p1 && sInt.user.id !== p2) return sInt.reply({ content: "❌ You are not a winner!", ephemeral: true });
@@ -859,17 +864,20 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
                 await sosMsg.edit({ components: [new ActionRowBuilder().addComponents(splitBtn, stealBtn)] });
                 
                 if (choices[p1] === 'split' && choices[p2] === 'split') { 
-                    statsDatabase[p1].won += 1;
-                    statsDatabase[p2].won += 1;
+                    initStats(p1); statsDatabase[p1].won += 1;
+                    initStats(p2); statsDatabase[p2].won += 1;
+                    
                     claimBtn.setCustomId(`claim_gw_${p1}_${rawPrizeB64}_${rawHostB64}`);
                     await channel.send({ content: `🤝 **SPLIT!** <@${p1}> and <@${p2}> share the prize: **${prize}**! 🎉`, components: [claimRow] }); 
                 }
                 else if (choices[p1] === 'steal' && choices[p2] === 'steal') { 
+                    // Égalité de vol : Personne ne gagne, donc aucun bouton n'est affiché.
                     await channel.send(`💀 **STEAL TO STEAL!** Both tried to steal. **NO ONE WINS**! ❌`); 
                 }
                 else { 
                     const thief = choices[p1] === 'steal' ? p1 : p2; 
-                    statsDatabase[thief].won += 1;
+                    initStats(thief); statsDatabase[thief].won += 1;
+                    
                     claimBtn.setCustomId(`claim_gw_${thief}_${rawPrizeB64}_${rawHostB64}`);
                     await channel.send({ content: `😈 **BETRAYAL!** <@${thief}> stole everything and wins **${prize}**! 🏆`, components: [claimRow] }); 
                 }
@@ -885,9 +893,6 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
         const rpsRow = new ActionRowBuilder().addComponents(rBtn, pBtn, sBtn);
         const rpsMsg = await channel.send({ content: `🪨📄✂️ <@${p1}> vs <@${p2}>! Battle for **${prize}**! Make your choice:`, components: [rpsRow] });
         const rpsChoices = {}; const rpsColl = rpsMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 45000 });
-        
-        if (statsDatabase[p1] && statsDatabase[p1].won > 0) statsDatabase[p1].won -= 1;
-        if (statsDatabase[p2] && statsDatabase[p2].won > 0) statsDatabase[p2].won -= 1;
 
         rpsColl.on('collect', async (rInt) => {
             if (rInt.user.id !== p1 && rInt.user.id !== p2) return rInt.reply({ content: "❌ You are not in this battle!", ephemeral: true });
@@ -900,15 +905,20 @@ async function handleMiniGames(channel, winners, prize, durationMs, winnerCount,
                 const c1 = rpsChoices[p1]; const c2 = rpsChoices[p2];
                 
                 if (c1 === c2) { 
+                    // Égalité : Aucun bouton Claim n'est généré
                     await channel.send(`🤝 **DRAW!** Both chose **${c1}**. Battle ends in a tie (No wins added)! 🧇`); 
                 }
                 else if ((c1 === 'rock' && c2 === 'scissors') || (c1 === 'paper' && c2 === 'rock') || (c1 === 'scissors' && c2 === 'paper')) { 
+                    initStats(p1);
                     statsDatabase[p1].won += 1;
+                    
                     claimBtn.setCustomId(`claim_gw_${p1}_${rawPrizeB64}_${rawHostB64}`);
                     await channel.send({ content: `👑 **VICTORY!** <@${p1}> wins **${prize}**! ✨`, components: [claimRow] }); 
                 }
                 else { 
+                    initStats(p2);
                     statsDatabase[p2].won += 1;
+                    
                     claimBtn.setCustomId(`claim_gw_${p2}_${rawPrizeB64}_${rawHostB64}`);
                     await channel.send({ content: `👑 **VICTORY!** <@${p2}> wins **${prize}**! ✨`, components: [claimRow] }); 
                 }
