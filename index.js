@@ -189,7 +189,7 @@ async function handleModCommands(message, command, args) {
         const amount = parseInt(args[0]);
         if (isNaN(amount) || amount < 1 || amount > 100) return message.channel.send("⚠️ Please provide a number between 1 and 100.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         await message.channel.bulkDelete(amount + 1, true).catch(() => null);
-        return message.channel.send("🧹 Deleted messages.").then(m => setTimeout(() => m.delete().catch(() => null), 4000));
+        return message.channel.send(`🧹 **${amount} messages have been cleared.**\n\n🛡️ **Moderator:** ${message.author}`).then(m => setTimeout(() => m.delete().catch(() => null), 4000));
     }
 
     if (command === 'roleadd') {
@@ -200,7 +200,7 @@ async function handleModCommands(message, command, args) {
         if (!target || !role) return message.channel.send("⚠️ Usage: `?roleadd @member @role`").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         try { 
             await target.roles.add(role); 
-            return message.channel.send(`✅ The role **${role.name}** has been successfully added to **${target.user.tag}**.`); 
+            return message.channel.send(`✅ **Role Successfully Added.**\n\n👤 **Member:** ${target}\n🏷️ **Role:** **${role.name}**\n🛡️ **Moderator:** ${message.author}`); 
         } catch (e) { 
             return message.channel.send("❌ Unable to add role. Check role hierarchy.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); 
         }
@@ -214,7 +214,7 @@ async function handleModCommands(message, command, args) {
         if (!warnDatabase[target.id] || warnDatabase[target.id].length === 0) { return message.channel.send(`✅ **${target.user.tag}** has no active warnings to remove.`); }
         warnDatabase[target.id].pop();
         saveDatabase();
-        return message.channel.send(`🧹 Removed the latest warning from **${target.user.tag}** (Remaining: ${warnDatabase[target.id].length}).`);
+        return message.channel.send(`🧹 **Latest warning removed.**\n\n👤 **Member:** ${target}\n📉 **Remaining Warnings:** **${warnDatabase[target.id].length}**\n🛡️ **Moderator:** ${message.author}`);
     }
 
     if (command === 'to') {
@@ -237,7 +237,7 @@ async function handleModCommands(message, command, args) {
         
         try {
             await target.timeout(finalDuration, reason);
-            return message.channel.send(`🔇 ${target} has been timed out.\n\n⏱️ **Duration:** **${timeArg || '1m'}**\n📄 **Reason:** *${reason}*`);
+            return message.channel.send(`🔇 ${target} has been timed out.\n\n⏱️ **Duration:** **${timeArg || '1m'}**\n📄 **Reason:** *${reason}*\n🛡️ **Moderator:** ${message.author}`);
         } catch (err) {
             return message.channel.send("❌ Unable to target this user. Verify hierarchical permissions.");
         }
@@ -572,7 +572,7 @@ client.on('interactionCreate', async (interaction) => {
         if ((mode === 'sos' || mode === 'rps') && winners !== 2) return interaction.reply({ content: "❌ Requires exactly 2 winners.", ephemeral: true });
         if (mode === 'clicker') winners = 1;
         
-        await interaction.reply({ content: `✅ Successfully created your ${mode.toUpperCase()} giveaway!`, ephemeral: true });
+        await interaction.reply({ content: `✅ Successfully created your \${mode.toUpperCase()} giveaway!`, ephemeral: true });
         startGiveawayEngine(interaction.channel, durationMs, prize, winners, mode, descriptionOpt, interaction.user);
     }
 
@@ -589,7 +589,7 @@ client.on('interactionCreate', async (interaction) => {
             const SECURE_STAFF_ROLE_ID = "1423749610395930707";   
 
             const channelOptions = {
-                name: `🎫-${interaction.user.username}`,
+                name: `🎫-\${interaction.user.username}`,
                 type: ChannelType.GuildText,
                 parent: SECURE_CATEGORY_ID, 
                 permissionOverwrites: [
@@ -615,17 +615,17 @@ client.on('interactionCreate', async (interaction) => {
             const ticketEmbed = new EmbedBuilder()
                 .setTitle('📥 New Giveaway Claim Ticket Opened')
                 .setColor('#2ECC71')
-                .setDescription(`Welcome ${interaction.user}, our support team will handle your reward transaction shortly!\n\n*Staff members can click the red button below to close and delete this channel.*`)
+                .setDescription(`Welcome \${interaction.user}, our support team will handle your reward transaction shortly!\n\n*Staff members can click the red button below to close and delete this channel.*`)
                 .addFields(
-                    { name: '🎁 Prize Handed Out', value: prizeAmount, inline: true },
-                    { name: '🎮 In-Game Name (IGN)', value: ignName, inline: true },
-                    { name: '👑 Giveaway Host', value: hostName, inline: true }
+                    { name: '🎁 Prize Handed Out', value: `**\${prizeAmount}**`, inline: true },
+                    { name: '🎮 In-Game Name (IGN)', value: `\`${ignName}\``, inline: true },
+                    { name: '👑 Giveaway Host', value: `${hostName}`, inline: true }
                 )
                 .setFooter({ text: "Waffel's Automated Tickets" })
                 .setTimestamp();
 
             await ticketChannel.send({ 
-                content: `🔔 <@&${SECURE_STAFF_ROLE_ID}> | New claim request from ${interaction.user}`, 
+                content: `🔔 <@&${SECURE_STAFF_ROLE_ID}> | New claim request from ${interaction.user}\n🎁 **Prize:** **${prizeAmount}** | 👑 **Host:** ${hostName}`, 
                 embeds: [ticketEmbed],
                 components: [closeRow]
             });
@@ -744,7 +744,7 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
                 await btnInt.followUp({ content: "✅ Successfully entered the giveaway!", ephemeral: true });
             }
         }
-        
+
         if (btnInt.customId.startsWith('leave_gw_')) {
             const allowedUserId = btnInt.customId.replace('leave_gw_', '');
             if (btnInt.user.id !== allowedUserId) return btnInt.reply({ content: "❌ This button isn't for you.", ephemeral: true });
