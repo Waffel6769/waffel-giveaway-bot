@@ -154,14 +154,14 @@ client.on('interactionCreate', async (interaction) => {
           { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
           { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
         ];
-        if (SECURE_STAFF_ROLE_ID) permissionOverwrites.push({ id: SECURE_STAFF_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+        if (SECURE_STAFF_ROLE_ID) permissionOverwrites.push({ id: SECURE_STAFF_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageH[...]
 
         const createdChannel = await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: SECURE_CATEGORY_ID || undefined, permissionOverwrites }).catch(() => null);
         if (!createdChannel) return interaction.editReply({ content: '❌ Failed to create a ticket channel. Check bot permissions.' });
 
         const closeBtn = new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket 🔴').setStyle(ButtonStyle.Danger);
         const row = new ActionRowBuilder().addComponents(closeBtn);
-        const embed = new EmbedBuilder().setTitle('🎫 Ticket Opened').setDescription('A staff member will be with you shortly. Click the red button to close this ticket when resolved.').setColor('#2ECC71');
+        const embed = new EmbedBuilder().setTitle('🎫 Ticket Opened').setDescription('A staff member will be with you shortly. Click the red button to close this ticket when resolved.').setColo[...]
         await createdChannel.send({ content: `<@&${SECURE_STAFF_ROLE_ID}> | New ticket from ${interaction.user}`, embeds: [embed], components: [row] }).catch(() => null);
         return interaction.editReply({ content: `✅ Your ticket has been created: ${createdChannel}` });
       }
@@ -187,7 +187,7 @@ client.on('interactionCreate', async (interaction) => {
           .setColor('#F1C40F')
           .setDescription('Here is a list of the main features and commands:')
           .addFields(
-            { name: '✨ Slash Commands (/)', value: '`/ticket` `/rename` `/gcreate` `/gend` `/greroll` `/gwblacklist` `/gwunblacklist` `/winnerinfo` `/faq` `/userinfo` `/serverinfo` `/avatar` `/infractions` `/help` `/wjamal` `/claimtime` `/stats` `/statsreset`' },
+            { name: '✨ Slash Commands (/)', value: '`/ticket` `/rename` `/gcreate` `/gend` `/greroll` `/gwblacklist` `/gwunblacklist` `/winnerinfo` `/faq` `/userinfo` `/serverinfo` `/avatar` `/[...]
             { name: '🛠️ Prefix Commands (?)', value: '`?lock` `?unlock` `?clear` `?roleadd` `?unwarn` `?to`' },
             { name: '🎉 Automation (!)', value: '`!gstart <minutes> <prize>`' }
           ).setFooter({ text: `Waffel's Giveaway Utility` });
@@ -220,7 +220,7 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (interaction.commandName === 'claimtime') {
-        const embed = new EmbedBuilder().setTitle('🎉 Giveaway Info').setColor('#F1C40F').setDescription('Quickdrops: 30 minutes\nWeekly/Daily: 24 hours\nBig Giveaways: 12 hours').setTimestamp();
+        const embed = new EmbedBuilder().setTitle('🎉 Giveaway Info').setColor('#F1C40F').setDescription('Quickdrops: 30 minutes\nWeekly/Daily: 24 hours\nBig Giveaways: 12 hours').setTimestamp([...]
         return interaction.reply({ embeds: [embed] });
       }
 
@@ -236,7 +236,7 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`👤 User Info - ${target.tag}`)
           .setThumbnail(target.displayAvatarURL())
           .addFields(
-            { name: '🆔', value: `\\`${target.id}\\``, inline: true },
+            { name: '🆔', value: '`' + target.id + '`', inline: true },
             { name: 'Bot', value: target.bot ? 'Yes' : 'No', inline: true }
           ).setTimestamp();
         return interaction.reply({ embeds: [embed] });
