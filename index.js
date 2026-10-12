@@ -686,7 +686,7 @@ async function handleAdminBlacklistSlashCommands(interaction) {
     }
 }
 // ==========================================
-// PARTIE 5.2 : FORMULAIRES ET TICKET DE RÉCLAMATION AUTOMATIQUE
+// PARTIE 5.2 : FORMULAIRES ET TICKET DE RÉCLAMATION AUTOMATIQUE (CORRIGÉ)
 // ==========================================
 
 async function handleComponentInteractions(interaction) {
@@ -726,8 +726,10 @@ async function handleComponentInteractions(interaction) {
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_claim_ticket_')) {
         const customIdParts = interaction.customId.split('_');
-        const prizeAmount = Buffer.from(customIdParts[3], 'base64').toString('utf8');
-        const hostName = Buffer.from(customIdParts[4], 'base64').toString('utf8');
+        
+        // RECALIBRAGE DES INDICES : Correspondance exacte avec la structure du bouton claim_gw
+        const prizeAmount = Buffer.from(customIdParts[4], 'base64').toString('utf8');
+        const hostName = Buffer.from(customIdParts[5], 'base64').toString('utf8');
         const ignName = interaction.fields.getTextInputValue('claim_ign');
 
         await interaction.deferReply({ ephemeral: true });
@@ -1075,4 +1077,3 @@ client.login(process.env.DISCORD_TOKEN).catch((err) => {
     console.error('❌ Discord client connection failure:', err);
     process.exit(1);
 });
-
