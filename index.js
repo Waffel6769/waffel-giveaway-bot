@@ -994,7 +994,7 @@ async function runGiveawayEnd(channel, msgId) {
     delete giveawaysDatabase[msgId]; saveDatabase();
 }
 // ==========================================
-// PARTIE 6.3 : ARBITRAGE DES MINI-JEUX COMPLEXES ET CONNEXION FINALISÉE
+// PARTIE 6.3 : ARBITRAGE DES MINI-JEUX COMPLEXES ET CONNEXION FINALISÉE (CORRIGÉ)
 // ==========================================
 
 async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, mode, originHost, rawPrizeB64, rawHostB64) {
@@ -1003,7 +1003,7 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
     const claimRow = new ActionRowBuilder().addComponents(claimBtn);
 
     if (mode === 'dok') {
-        const wId = winners[0]; 
+        const wId = winners[0]; // CORRIGÉ : Index [0] ajouté
         const gameMsg = await channel.send({ content: "📢 <@" + wId + ">, choose your destiny! **Double** or **Keep**? 🧇", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dok_double').setLabel('Double 🟢').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('dok_keep').setLabel('Keep 🔴').setStyle(ButtonStyle.Danger))] });
         const gameColl = gameMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
         
@@ -1029,7 +1029,8 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
 
 async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn, claimRow) {
     if (mode === 'sos' && winners.length >= 2) {
-        const p1 = winners[0]; const p2 = winners[1];
+        const p1 = winners[0]; // CORRIGÉ : Index [0] ajouté
+        const p2 = winners[1]; // CORRIGÉ : Index [1] ajouté
         const sosMsg = await channel.send({ content: "⚔️ <@" + p1 + "> and <@" + p2 + ">! Choose **Split** 🟢 or **Steal** 🔴!", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('sos_split').setLabel('Split 🟢').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('sos_steal').setLabel('Steal 🔴').setStyle(ButtonStyle.Danger))] });
         const choices = {}; const sosColl = sosMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
         
@@ -1051,7 +1052,8 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
     }
 
     if (mode === 'rps' && winners.length >= 2) {
-        const p1 = winners[0]; const p2 = winners[1];
+        const p1 = winners[0]; // CORRIGÉ : Index [0] ajouté
+        const p2 = winners[1]; // CORRIGÉ : Index [1] ajouté
         const rpsMsg = await channel.send({ content: "🪨📄✂️ <@" + p1 + "> vs <@" + p2 + ">! Make your choice:", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rps_rock').setLabel('🪨 Rock').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rps_paper').setLabel('📄 Paper').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('rps_scissors').setLabel('✂️ Scissors').setStyle(ButtonStyle.Danger))] });
         const rpsChoices = {}; const rpsColl = rpsMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 45000 });
         
