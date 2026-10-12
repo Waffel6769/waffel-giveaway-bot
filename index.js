@@ -194,61 +194,23 @@ async function handleModCommands(message, command, args) {
         return message.channel.send(`🧹 Removed the latest warning from **${target.user.tag}** (Remaining: ${warnDatabase[target.id].length}).`);
     }
 
-    if (!['to', 'rto', 'kick', 'ban', 'unban', 'warn'].includes(command)) return;
-    setTimeout(() => message.delete().catch(() => null), 200);
-    if (!banPerm) return message.channel.send("❌ Permission denied.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-
-    if (command === 'unban') {
-        const userId = args[0];
-        if (!userId) return message.channel.send("❌ Please provide a valid User ID.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        try { await message.guild.members.unban(userId); return message.channel.send(`🔓 **User ID (${userId})** has been successfully unbanned.`); } 
-        catch (e) { return message.channel.send("❌ User not found or is not currently banned.").then(m => setTimeout(() => m.delete().catch(() => null), 5000)); }
-    }
-    const target = message.mentions.members.first();
-    if (!target) return message.channel.send(`❌ Please mention a valid user.`).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-    
-    if (command === 'warn') {
-        const reason = args.slice(1).join(' ') || "No reason provided";
-        if (!warnDatabase[target.id]) warnDatabase[target.id] = [];
-        warnDatabase[target.id].push({ reason, moderator: message.author.tag, date: new Date().toLocaleDateString() });
-        saveDatabase();
-        await target.send(`⚠️ **Warning:** You received a warning in **${message.guild.name}**.\nReason: ${reason}`).catch(() => null);
-        return message.channel.send(`⚠️ **${target.user.tag}** has been warned. Reason: ${reason}`);
-    }
-
-    if (!target.moderatable) return message.channel.send("❌ I cannot moderate this user.").then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-
-    function parseDuration(str) {
-        if (!str) return null; const match = str.match(/^(\d+)(sec|s|m|h|d|w|y)/i); if (!match) return null;
-        const val = parseInt(match[1]); const unit = match[2].toLowerCase();
-        if (unit === 's' || unit === 'sec') return val * 1000; if (unit === 'm') return val * 60 * 1000;
-        if (unit === 'h') return val * 60 * 60 * 1000; if (unit === 'd') return val * 24 * 60 * 60 * 1000;
-        if (unit === 'w') return val * 7 * 24 * 60 * 60 * 1000; if (unit === 'y') return val * 365 * 24 * 60 * 60 * 1000;
-        return null;
-    }
-
-    if (command === 'rto') { await target.timeout(null); return message.channel.send(`🗣️ **${target.user.tag}** timeout removed!`); }
-
     if (command === 'to') {
-        let timeArg = args[0]; let durationMs = parseDuration(timeArg);
+        let timeArg = args[0]; 
+        let durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(1).join(' ') : args.join(' ') || "No reason provided";
         let finalDuration = durationMs || (60 * 1000);
-        if (finalDuration > 28 * 24 * 60 * 60 * 1000) { finalDuration = 28 * 24 * 60 * 60 * 1000; timeArg = "28d (Discord Max)"; }
+        
+        if (finalDuration > 28 * 24 * 60 * 60 * 1000) { 
+            finalDuration = 28 * 24 * 60 * 60 * 1000; 
+            timeArg = "28d (Discord Max)"; 
+        }
+        
+        // Exécute le vrai timeout Discord sur le membre ciblé
         await target.timeout(finalDuration, reason);
-        // Version corrigée : Formatage aéré, ping unique propre, gras distinct et séparé
+        
+        // Message propre : Un seul ping, durée et raison séparées et en gras
         return message.channel.send(`🔇 ${target} has been timed out.\n\n⏱️ **Duration:** **${timeArg || '1m'}**\n📄 **Reason:** *${reason}*`);
     }
-
-    if (command === 'kick') { const reason = args.slice(1).join(' ') || "No reason provided"; await target.kick(reason); return message.channel.send(`👢 **${target.user.tag}** kicked. Reason: ${reason}`); }
-
-    if (command === 'ban') {
-        let timeArg = args[0]; let durationMs = parseDuration(timeArg);
-        let reason = durationMs ? args.slice(1).join(' ') : args.join(' ') || "No reason provided";
-        await target.ban({ reason }); message.channel.send(`🔨 **${target.user.tag}** banned. Reason: ${reason}`);
-        if (durationMs) { setTimeout(async () => { await message.guild.members.unban(target.id).catch(() => null); message.channel.send(`🔓 **${target.user.tag}** temporary ban expired.`); }, durationMs); }
-    }
-}
-
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand() && ['gcreate', 'gend', 'greroll'].includes(interaction.commandName)) {
         if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
