@@ -23,7 +23,7 @@ const app = express();
 let warnDatabase = {};
 let blacklistDatabase = new Set();
 let statsDatabase = {};
-let giveawaysDatabase = {}; // Système de persistance anti-crash intégré
+let giveawaysDatabase = {}; 
 
 try {
     if (fs.existsSync(DATA_FILE)) {
@@ -110,7 +110,6 @@ client.once('ready', async () => {
         console.error(error); 
     }
 
-    // Reconstruction automatique des collecteurs de giveaways actifs après redémarrage
     for (const msgId in giveawaysDatabase) {
         const gw = giveawaysDatabase[msgId];
         const timeLeft = gw.endTime - Date.now();
@@ -147,7 +146,7 @@ client.on('messageCreate', async (message) => {
                 .then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         }
         setTimeout(() => message.delete().catch(() => null), 500);
-        const args = message.content.slice('!gstart'.length).trim().split(/ +/);
+        const args = message.content.slice('!gstartTemplate'.length).trim().split(/ +/);
         const durationStr = args[0];
         const prize = args.slice(1).join(' ');
         if (!durationStr || !prize) return;
@@ -279,7 +278,7 @@ client.on('interactionCreate', async (interaction) => {
             const winRate = userStats.entered > 0 ? ((userStats.won / userStats.entered) * 100).toFixed(1) : '0.0';
 
             const statsEmbed = new EmbedBuilder()
-                .setTitle(`📊 Giveaway Statistics - \${targetUser.username}`) // Correction syntaxe
+                .setTitle(`📊 Giveaway Statistics - \${targetUser.username}`)
                 .setColor('#F1C40F')
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
@@ -350,7 +349,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (interaction.commandName === 'infractions') {
             const warns = warnDatabase[targetUser.id] || [];
-            const embed = new EmbedBuilder().setTitle(`📜 Moderation History for ${targetUser.username}`).setColor(warns.length > 0 ? '#E74C3C' : '#2ECC71'); // Correction syntaxe
+            const embed = new EmbedBuilder().setTitle(`📜 Moderation History for ${targetUser.username}`).setColor(warns.length > 0 ? '#E74C3C' : '#2ECC71');
             if (warns.length === 0) { embed.setDescription(`✅ This user has a perfectly clean record. No infractions found!`); } 
             else { embed.setDescription(`⚠️ Total Warnings: **${warns.length}**`); warns.forEach((warn, index) => { embed.addFields({ name: `Warning #${index + 1} (${warn.date})`, value: `**Reason:** ${warn.reason}\n**Moderator:** ${warn.moderator}` }); }); }
             return interaction.reply({ embeds: [embed] });
@@ -392,7 +391,6 @@ client.on('interactionCreate', async (interaction) => {
             const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Each winner gets:\*\* (.+)/) : null;
             const prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
 
-            // Correction Reroll : Exclure le Staff et filtrer sur les participants réels enregistrés
             let eligiblePool = [];
             if (giveawaysDatabase[msgId] && giveawaysDatabase[msgId].participants.length > 0) {
                 eligiblePool = giveawaysDatabase[msgId].participants.filter(id => !blacklistDatabase.has(id));
@@ -428,11 +426,11 @@ client.on('interactionCreate', async (interaction) => {
 
         if (interaction.commandName === 'gwblacklist') {
             const target = interaction.options.getUser('target');
-            if (blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is already on the giveaway blacklist.`, ephemeral: true }); // Correction syntaxe
+            if (blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is already on the giveaway blacklist.`, ephemeral: true });
             
             blacklistDatabase.add(target.id);
             saveDatabase();
-            await interaction.reply({ content: `🚫 Successfully added \${target} to the **@Giveaway Blacklist**.` }); // Correction syntaxe
+            await interaction.reply({ content: `🚫 Successfully added \${target} to the **@Giveaway Blacklist**.` });
 
             const logChannel = interaction.guild.channels.cache.get(process.env.LOG_CHANNEL_ID);
             if (logChannel) {
@@ -440,8 +438,8 @@ client.on('interactionCreate', async (interaction) => {
                     .setTitle('🚫 User Blacklisted from Giveaways')
                     .setColor('#E74C3C')
                     .addFields(
-                        { name: '👤 Target User', value: `\${target.tag}`, inline: true }, // Correction syntaxe
-                        { name: '🛡️ Moderator', value: `\${interaction.user.tag}`, inline: true }, // Correction syntaxe
+                        { name: '👤 Target User', value: `\${target.tag}`, inline: true },
+                        { name: '🛡️ Moderator', value: `\${interaction.user.tag}`, inline: true },
                         { name: '🆔 User ID', value: `\`${target.id}\``, inline: false }
                     )
                     .setTimestamp();
@@ -452,11 +450,11 @@ client.on('interactionCreate', async (interaction) => {
 
         if (interaction.commandName === 'gwunblacklist') {
             const target = interaction.options.getUser('target');
-            if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is not currently blacklisted.`, ephemeral: true }); // Correction syntaxe
+            if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: `⚠️ \${target.username} is not currently blacklisted.`, ephemeral: true });
             
             blacklistDatabase.delete(target.id);
             saveDatabase();
-            await interaction.reply({ content: `✅ Successfully removed \${target} from the giveaway blacklist.` }); // Correction syntaxe
+            await interaction.reply({ content: `✅ Successfully removed \${target} from the giveaway blacklist.` });
 
             const logChannel = interaction.guild.channels.cache.get(process.env.LOG_CHANNEL_ID);
             if (logChannel) {
@@ -464,8 +462,8 @@ client.on('interactionCreate', async (interaction) => {
                     .setTitle('✅ User Unblacklisted from Giveaways')
                     .setColor('#2ECC71')
                     .addFields(
-                        { name: '👤 Target User', value: `\${target.tag}`, inline: true }, // Correction syntaxe
-                        { name: '🛡️ Moderator', value: `\${interaction.user.tag}`, inline: true }, // Correction syntaxe
+                        { name: '👤 Target User', value: `\${target.tag}`, inline: true },
+                        { name: '🛡️ Moderator', value: `\${interaction.user.tag}`, inline: true },
                         { name: '🆔 User ID', value: `\`${target.id}\``, inline: false }
                     )
                     .setTimestamp();
@@ -521,7 +519,7 @@ client.on('interactionCreate', async (interaction) => {
                 .setThumbnail(interaction.guild.iconURL())
                 .setDescription('Here is a snapshot summary of the most recently processed giveaway recorded in this channel:')
                 .addFields(
-                    { name: '🎁 Prize Handed Out', value: `**\${prizeInfo}**`, inline: false }, // Correction syntaxe
+                    { name: '🎁 Prize Handed Out', value: `**\${prizeInfo}**`, inline: false },
                     { name: '👑 Registered Winner(s)', value: winnersInfo, inline: false },
                     { name: '🆔 Message Reference ID', value: `\`${lastGiveaway.id}\``, inline: true }
                 )
@@ -587,14 +585,26 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.deferReply({ ephemeral: true });
 
         try {
+            const SECURE_CATEGORY_ID = "1443450226647240796"; 
+            const SECURE_STAFF_ROLE_ID = "1423749610395930707";   
+
             const channelOptions = {
-                name: `ticket-${interaction.user.username}`,
+                name: `🎫-${interaction.user.username}`,
                 type: ChannelType.GuildText,
-                parent: process.env.SECURE_CATEGORY_ID, 
+                parent: SECURE_CATEGORY_ID, 
                 permissionOverwrites: [
-                    { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-                    { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                    { id: process.env.SECURE_STAFF_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+                    {
+                        id: interaction.guild.roles.everyone.id,
+                        deny: [PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: interaction.user.id,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+                    },
+                    {
+                        id: SECURE_STAFF_ROLE_ID,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+                    }
                 ],
             };
 
@@ -615,35 +625,47 @@ client.on('interactionCreate', async (interaction) => {
                 .setTimestamp();
 
             await ticketChannel.send({ 
-                content: `🔔 <@&${process.env.SECURE_STAFF_ROLE_ID}> | New claim request from ${interaction.user}`, 
+                content: `🔔 <@&${SECURE_STAFF_ROLE_ID}> | New claim request from ${interaction.user}`, 
                 embeds: [ticketEmbed],
                 components: [closeRow]
             });
             
             await interaction.editReply({ content: `✅ Your ticket channel has been created successfully: ${ticketChannel}` });
         } catch (error) {
-            await interaction.editReply({ content: "❌ An error occurred while auto-generating your private ticket channel." });
+            console.error("❌ ERROR CREATING TICKET CHANNEL:", error);
+            await interaction.editReply({ content: "❌ An error occurred while auto-generating your private ticket channel. Make sure the bot has the **Manage Channels** permission and the IDs in the code are correct." });
         }
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('claim_gw_')) {
         const parts = interaction.customId.split('_');
-        const allowedWinnerId = parts[2];
-        const rawPrizeB64 = parts[3];
-        const rawHostB64 = parts[4];
+        const allowedWinnerId = parts[2]; 
+        const rawPrizeB64 = parts[3];     
+        const rawHostB64 = parts[4];      
 
         if (interaction.user.id !== allowedWinnerId) {
             return interaction.reply({ content: "❌ **Access Denied.** You are not the registered winner of this giveaway.", ephemeral: true });
         }
 
-        const modal = new ModalBuilder().setCustomId(`modal_claim_ticket_${allowedWinnerId}_${rawPrizeB64}_${rawHostB64}`).setTitle('Claim Giveaway Reward Menu 🏆');
-        const ignInput = new TextInputBuilder().setCustomId('claim_ign').setLabel("What is your In-Game Name (IGN)?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., WaffelPlayer99").setRequired(true);
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_claim_ticket_${allowedWinnerId}_${rawPrizeB64}_${rawHostB64}`)
+            .setTitle('Claim Giveaway Reward Menu 🏆');
+            
+        const ignInput = new TextInputBuilder()
+            .setCustomId('claim_ign')
+            .setLabel("What is your In-Game Name (IGN)?")
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder("e.g., WaffelPlayer99")
+            .setRequired(true);
+            
         modal.addComponents(new ActionRowBuilder().addComponents(ignInput));
         await interaction.showModal(modal);
     }
 
     if (interaction.isButton() && interaction.customId === 'close_giveaway_ticket') {
-        if (!interaction.member.roles.cache.has(process.env.SECURE_STAFF_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        const SECURE_STAFF_ROLE_ID = "1423749610395930707"; 
+
+        if (!interaction.member.roles.cache.has(SECURE_STAFF_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({ content: "❌ Only Staff Members are authorized to close giveaway claim tickets.", ephemeral: true });
         }
         await interaction.reply({ content: "🔒 **Closing ticket...** This channel will be deleted in 5 seconds." });
@@ -655,7 +677,7 @@ client.on('interactionCreate', async (interaction) => {
 async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode, customTitle, hostUser) {
     const endTime = Date.now() + durationMs;
     const endTimeStamp = Math.floor(endTime / 1000);
-    const title = customTitle ? ` 🧇 ${customTitle} 🧇 ` : "✨ WAFFEL'S GIVEAWAY ✨"; // Correction Emoji 🧇
+    const title = customTitle ? ` 🧇 ${customTitle} 🧇 ` : "✨ WAFFEL'S GIVEAWAY ✨";
 
     let description = `⏳ **Ends:** <t:${endTimeStamp}:R> (<t:${endTimeStamp}:F>)\n👑 **Hosted by:** ${hostUser}\n👥 **Entries:** **0**\n🏆 **Winners:** **${winnerCount}**\n🎁 **Each winner gets:** **${prize}**`;
     if (mode === 'clicker') { 
@@ -667,7 +689,6 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
     const row = new ActionRowBuilder().addComponents(enterButton);
     const msg = await channel.send({ embeds: [embed], components: [row] });
 
-    // Sauvegarde en base de données pour la persistance anti-crash
     giveawaysDatabase[msg.id] = {
         channelId: channel.id,
         endTime: endTime,
@@ -703,7 +724,7 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
                 initStats(btnInt.user.id);
                 statsDatabase[btnInt.user.id].entered += 1;
                 saveDatabase();
-                await btnInt.reply({ content: " 🧇 CRITICAL CLICK! Checking if you were the fastest...", ephemeral: true }); // Correction Emoji 🧇
+                await btnInt.reply({ content: " 🧇 CRITICAL CLICK! Checking if you were the fastest...", ephemeral: true });
                 collector.stop();
             } else {
                 if (gw.participants.includes(btnInt.user.id)) {
@@ -787,7 +808,7 @@ async function runGiveawayEnd(channel, msgId) {
         
         if (endMsg) await endMsg.edit({ embeds: [finalEmbed] });
         await channel.send({
-            content: `⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@${winnerId}>, you reacted the fastest and won **${gw.prize}**! 🎉🏆\nClick the button below to claim your prize!`, // Correction Emoji 🧇
+            content: `⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@${winnerId}>, you reacted the fastest and won **${gw.prize}**! 🎉🏆\nClick the button below to claim your prize!`,
             components: [new ActionRowBuilder().addComponents(secureClaimBtn)]
         });
         delete giveawaysDatabase[msgId];
@@ -827,12 +848,11 @@ async function runGiveawayEnd(channel, msgId) {
         const secureClaimBtn = new ButtonBuilder().setCustomId(`claim_gw_${primaryWinnerId}_${rawPrizeB64}_${rawHostB64}`).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
 
         await channel.send({
-            content: `🎉 🧇 **CONGRATULATIONS** ${winnersMention}! You won **${gw.prize}**! 🎁✨\nClick the button below to open your ticket!`, // Correction Emoji 🧇
+            content: `🎉 🧇 **CONGRATULATIONS** ${winnersMention}! You won **${gw.prize}**! 🎁✨\nClick the button below to open your ticket!`,
             components: [new ActionRowBuilder().addComponents(secureClaimBtn)]
         });
     }
 
-    // Lancement des systèmes de mini-jeux natifs d'origine
     handleMiniGames(channel, winners, gw.prize, (gw.endTime - Date.now()), gw.winnerCount, gw.mode, gw.hostUser);
     
     delete giveawaysDatabase[msgId];
