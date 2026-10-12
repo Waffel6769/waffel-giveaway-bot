@@ -526,14 +526,14 @@ client.on('interactionCreate', async (interaction) => {
 
         await interaction.deferReply({ ephemeral: true });
 
-        // Votre ID de staff configuré en dur de manière sécurisée
         const SECURE_STAFF_ROLE_ID = '1423749610395930707';
+        const SECURE_CATEGORY_ID = '1443450226647240796'; // Votre ID de catégorie configuré ici
 
         try {
-            // Options de création du salon de ticket
             const channelOptions = {
                 name: `ticket-${interaction.user.username}`,
                 type: ChannelType.GuildText,
+                parent: SECURE_CATEGORY_ID, // Force le rangement dans votre catégorie
                 permissionOverwrites: [
                     {
                         id: interaction.guild.roles.everyone.id,
@@ -550,15 +550,8 @@ client.on('interactionCreate', async (interaction) => {
                 ],
             };
 
-            // On vérifie si TICKET_CATEGORY_ID est valide, sinon on ne met pas de catégorie parent
-            if (typeof TICKET_CATEGORY_ID !== 'undefined' && TICKET_CATEGORY_ID && TICKET_CATEGORY_ID !== '123456789012345678') {
-                channelOptions.parent = TICKET_CATEGORY_ID;
-            }
-
-            // Création automatique du salon
             const ticketChannel = await interaction.guild.channels.create(channelOptions);
 
-            // Création du bouton rouge pour fermer le ticket
             const closeBtn = new ButtonBuilder()
                 .setCustomId('close_giveaway_ticket')
                 .setLabel('Close Ticket 🔴')
@@ -583,7 +576,7 @@ client.on('interactionCreate', async (interaction) => {
                 components: [closeRow]
             });
             
-            await interaction.editReply({ content: `✅ Your ticket channel has been created successfully: ${ticketChannel}` });
+            await interaction.editReply({ content: `✅ Your ticket channel has been created successfully in the proper category: ${ticketChannel}` });
 
         } catch (error) {
             console.error("DEBUG ERROR TICKET:", error);
@@ -591,25 +584,15 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    // Détecter le clic sur le bouton rouge "Close Ticket"
-    if (interaction.isButton() && interaction.customId === 'close_giveaway_ticket') {
-        const SECURE_STAFF_ROLE_ID = '1423749610395930707';
-        
-        // Vérification de sécurité : Seul le staff ou l'administrateur peut fermer le ticket
-        if (!interaction.member.roles.cache.has(SECURE_STAFF_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: "❌ Only Staff Members are authorized to close giveaway claim tickets.", ephemeral: true });
+    if (interaction.isButton() && interaction.customId.startsWith('claim_gw_')) {
+        // Extraction de l'ID du gagnant autorisé stocké dans le customId du bouton
+        const allowedWinnerId = interaction.customId.replace('claim_gw_', '');
+
+        // Si l'utilisateur qui clique n'est pas le gagnant, on bloque l'accès
+        if (interaction.user.id !== allowedWinnerId) {
+            return interaction.reply({ content: "❌ **Access Denied.** You are not the registered winner of this giveaway. Only the winner can claim this prize!", ephemeral: true });
         }
 
-        await interaction.reply({ content: "🔒 **Closing ticket...** This channel will be deleted in 5 seconds." });
-        
-        // Attendre 5 secondes avant de supprimer définitivement le salon pour laisser le temps de lire le message
-        setTimeout(async () => {
-            await interaction.channel.delete().catch(() => null);
-        }, 5000);
-        return;
-    }
-
-    if (interaction.isButton() && interaction.customId === 'claim_giveaway_ticket') {
         const modal = new ModalBuilder().setCustomId('modal_claim_ticket').setTitle('Claim Giveaway Reward Menu 🏆');
 
         const amountInput = new TextInputBuilder().setCustomId('claim_amount').setLabel("How much did you win?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 500m / Special Waffle Bundle").setRequired(true);
@@ -622,6 +605,21 @@ client.on('interactionCreate', async (interaction) => {
             new ActionRowBuilder().addComponents(hostInput)
         );
         await interaction.showModal(modal);
+    }
+
+    if (interaction.isButton() && interaction.customId === 'close_giveaway_ticket') {
+        const SECURE_STAFF_ROLE_ID = '1423749610395930707';
+        
+        if (!interaction.member.roles.cache.has(SECURE_STAFF_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return interaction.reply({ content: "❌ Only Staff Members are authorized to close giveaway claim tickets.", ephemeral: true });
+        }
+
+        await interaction.reply({ content: "🔒 **Closing ticket...** This channel will be deleted in 5 seconds." });
+        
+        setTimeout(async () => {
+            await interaction.channel.delete().catch(() => null);
+        }, 5000);
+        return;
     }
 });
 async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode, customTitle, hostUser) {
@@ -704,13 +702,14 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
             return await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
         }
 
-        const claimBtn = new ButtonBuilder().setCustomId('claim_giveaway_ticket').setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
-        const claimRow = new ActionRowBuilder().addComponents(claimBtn);
-
         if (mode === 'clicker') {
             const winnerId = participants[0];
             initStats(winnerId);
             statsDatabase[winnerId].won += 1;
+
+            // Bouton sécurisé relié uniquement à l'ID de ce gagnant
+            const secureClaimBtn = new ButtonBuilder().setCustomId(`claim_gw_${winnerId}`).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
+            const claimRow = new ActionRowBuilder().addComponents(secureClaimBtn);
 
             const finalEmbed = EmbedBuilder.from(embed).setDescription(`⚡ **CLICKER OVER!**\n👑 **Fastest Clicker:** <@${winnerId}>\n🎁 **Each winner gets:** **${prize}**`).setColor('#2ECC71');
             await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
@@ -737,6 +736,11 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
             statsDatabase[wId].won += 1;
         });
 
+        // Pour les giveaways multi-gagnants normaux, le premier gagnant de la liste reçoit le droit de cliquer sur le bouton
+        const primaryWinnerId = winners[0];
+        const secureClaimBtn = new ButtonBuilder().setCustomId(`claim_gw_${primaryWinnerId}`).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
+        const claimRow = new ActionRowBuilder().addComponents(secureClaimBtn);
+
         const finalEmbed = EmbedBuilder.from(embed).setDescription(`🎉 **GIVEAWAY ENDED!**\n👑 **Winner(s):** ${winnersMention}\n👑 **Hosted by:** ${hostUser}\n🎁 **Each winner gets:** **${prize}**`).setColor('#2ECC71');
         await endMsg.edit({ embeds: [finalEmbed], components: [disRow] });
         
@@ -745,9 +749,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
             components: [claimRow]
         });
 
-        // Cette section fait référence aux mini-jeux de votre ancien code
-        // (handleMiniGames est toujours présent tout à la fin de votre script initial)
+        handleMiniGames(channel, winners, prize, durationMs, winnerCount, mode);
     });
 }
 client.login(process.env.DISCORD_TOKEN);
-
