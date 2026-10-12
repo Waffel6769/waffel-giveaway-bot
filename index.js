@@ -50,6 +50,20 @@ function saveDatabase() {
         console.error("❌ Database save error:", error);
     }
 }
+
+function saveDatabase() {
+    try {
+        const dataToSave = {
+            warns: warnDatabase,
+            stats: statsDatabase,
+            giveaways: giveawaysDatabase,
+            blacklist: Array.from(blacklistDatabase)
+        };
+        fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave, null, 4), 'utf8');
+    } catch (error) {
+        console.error("❌ Database save error:", error);
+    }
+}
 function initStats(userId) {
     if (!statsDatabase[userId]) {
         statsDatabase[userId] = { entered: 0, won: 0 };
