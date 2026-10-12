@@ -43,8 +43,17 @@ client.once('ready', () => {
   console.log(`✨ Logged in as ${client.user.tag}`);
 });
 
-app.get('/', (req, res) => res.send("Waffel's Giveaway Bot - alive"));
-app.listen(process.env.PORT || 3000, () => console.log('HTTP server listening'));
+// Health endpoints
+app.get('/', (req, res) => {
+  res.type('text').send("Waffel's Giveaway Bot - alive");
+});
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', bot: client.user ? client.user.tag : null });
+});
+
+const PORT = process.env.PORT || 3000;
+// Bind to 0.0.0.0 to ensure the host's network interfaces accept connections
+app.listen(PORT, '0.0.0.0', () => console.log(`HTTP server listening on port ${PORT}`));
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
