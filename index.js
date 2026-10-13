@@ -92,7 +92,7 @@ function ensureTicketChannelName(name) {
     .toLowerCase()
     .replace(/[^a-z0-9-_]+/g, '-')
     .replace(/-+/g, '-')
-    .replace(/^-|-\$/g, '')
+    .replace(/^-|-$/g, '')
     .slice(0, 80);
 }
 
@@ -108,8 +108,10 @@ function createPrefixEmbed(title, description, fields = []) {
   }
   return embed;
 }
+// ==========================================
+// PARTIE 2 : INITIALISATION DU CLIENT ET DE L'HEBERGEMENT WEB
+// ==========================================
 
-// 🤖 INITIALISATION DU BOT DISCORD
 const client = new Client({ 
   intents: [
     GatewayIntentBits.Guilds, 
@@ -120,7 +122,22 @@ const client = new Client({
   ] 
 });
 
-// 📋 COLLECTION COMPLETE DES COMMANDES SLASH (INCLUT MINI-JEUX)
+// 🌐 SERVEUR HTTP WEB (EXPRESS KEEPALIVE)
+app.get('/', (req, res) => {
+  res.send("Waffel's Engine is awake and running 24/7!");
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', bot: client.user ? client.user.tag : null });
+});
+
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🌐 HTTP KeepAlive Server running on port ${port}`);
+});
+// ==========================================
+// PARTIE 3 : DECLARATION ET RECHARGEMENT DES COMMANDES SLASH
+// ==========================================
+
 const commands = [
   new SlashCommandBuilder().setName('ticket').setDescription('Open a support ticket'),
   new SlashCommandBuilder().setName('close').setDescription('Close the current ticket'),
@@ -149,11 +166,10 @@ const commands = [
     .addUserOption(option => option.setName('target').setDescription('The user to view stats for').setRequired(false)),
   new SlashCommandBuilder().setName('statsreset').setDescription('Reset all giveaway statistics for a specific user 🔄')
     .addUserOption(option => option.setName('target').setDescription('The user whose statistics will be wiped clean').setRequired(true)),
-  new SlashCommandBuilder().setName('rename').setDescription('Quickly alter the current ticket identity name')
+  new SlashCommandBuilder().setName('rename').setDescription('Quickly alter the current channel name')
     .addStringOption(option => option.setName('name').setDescription('New channel name strip').setRequired(true))
 ].map(cmd => cmd.toJSON());
 
-// ⚡ CHARGEMENT DU BOT & DES ANCIENS GIVEAWAYS ACTIFS
 client.once('ready', async () => {
   console.log("✨ Waffel's Complete Bot is logged in as " + client.user.tag + "!");
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -169,7 +185,7 @@ client.once('ready', async () => {
     console.error(error); 
   }
 
-  // Relance les giveaways en cours d'exécution restants dans la BDD
+  // Relance les giveaways restants actifs dans la base de données
   for (const msgId in giveawaysDatabase) {
     const gw = giveawaysDatabase[msgId];
     const timeLeft = gw.endTime - Date.now();
@@ -188,30 +204,19 @@ client.once('ready', async () => {
     }
   }
 });
-
-// 🌐 SERVEUR HTTP WEB (EXPRESS KEEPALIVE)
-app.get('/', (req, res) => {
-  res.send("Waffel's Engine is awake and running 24/7!");
-});
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', bot: client.user ? client.user.tag : null });
-});
-app.listen(port, '0.0.0.0', () => {
-  console.log(`🌐 HTTP KeepAlive Server running on port ${port}`);
-});
 // ==========================================
-// PARTIE 2 : COMMANDES ET INFRACTIONS (MESSAGES TEXTUELS)
+// PARTIE 4.1 : INTERCEPTION DES MESSAGES, PING ET GSTART REPOIS
 // ==========================================
 
 client.on('messageCreate', async (message) => {
     if (!message.guild || message.author.bot) return;
 
-    // Commande rapide de vérification
+    // Commande rapide de ping
     if (message.content === '!ping') {
         return message.reply('Pong!');
     }
 
-    // Gestion du lancement rapide de giveaway par message texte
+    // Lancement instantané de giveaway classique via message textuel
     if (message.content.startsWith('!gstart')) {
         if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
             return message.channel.send("❌ You need to be a **Staff Member** (with Timeout permissions) to start a giveaway.")
@@ -253,6 +258,9 @@ client.on('messageCreate', async (message) => {
     
     handleCoreModCommands(message, command, args);
 });
+// ==========================================
+// PARTIE 4.2 : ROUTINES DE MODÉRATION STANDARDS (?unlock, ?clear, ?roleadd, ?unwarn)
+// ==========================================
 
 async function handleCoreModCommands(message, command, args) {
     // Déverrouillage de salon public (?unlock)
@@ -274,6 +282,7 @@ async function handleCoreModCommands(message, command, args) {
     const manageMessagesPerm = message.member.permissions.has(PermissionFlagsBits.ManageMessages);
     const banPerm = message.member.permissions.has(PermissionFlagsBits.BanMembers);
     const manageRolesPerm = message.member.permissions.has(PermissionFlagsBits.ManageRoles);
+    const moderateMembersPerm = message.member.permissions.has(PermissionFlagsBits.ModerateMembers);
 
     // Nettoyage de messages (?clear)
     if (command === 'clear') {
@@ -309,11 +318,11 @@ async function handleCoreModCommands(message, command, args) {
         }
     }
     
-    handleAdvancedModCommands(message, command, args, banPerm);
+    handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm);
 }
 
-async function handleAdvancedModCommands(message, command, args, banPerm) {
-    // Retrait de warning (?unwarn)
+async function handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm) {
+    // Retrait du dernier avertissement (?unwarn)
     if (command === 'unwarn') {
         setTimeout(() => message.delete().catch(() => null), 200);
         if (!banPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Permission denied.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
@@ -331,26 +340,68 @@ async function handleAdvancedModCommands(message, command, args, banPerm) {
         ]);
         return message.channel.send({ embeds: [logEmbed] });
     }
+// ==========================================
+// PARTIE 4.3 : ACTIONS DE MODÉRATION AVANCÉES (?warn, ?to, ?rto, ?ban, ?unban)
+// ==========================================
 
-    // Exécution d'exclusion temporelle / Exclusions (?to)
-    if (command === 'to') {
+    // Attribution d'un avertissement (?warn)
+    if (command === 'warn') {
         setTimeout(() => message.delete().catch(() => null), 200);
-        if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+        if (!moderateMembersPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Permission denied.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
+        if (!target) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "❌ Usage: `?warn @member [reason]`")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        
+        const reason = args.slice(1).join(' ') || "No reason provided";
+        if (!warnDatabase[target.id]) warnDatabase[target.id] = [];
+        
+        warnDatabase[target.id].push({
+            reason: reason,
+            moderator: message.author.tag,
+            date: new Date().toLocaleDateString('fr-FR')
+        });
+        saveDatabase();
+
+        const logEmbed = createPrefixEmbed('Member Warned Successfully', 'Violation recorded in database ledger.', [
+            { name: '👤 Target Member', value: target.toString(), inline: true },
+            { name: '📄 Infraction Reason', value: reason, inline: false },
+            { name: '🛡️ Issuing Exec', value: message.author.toString(), inline: true }
+        ]);
+        return message.channel.send({ embeds: [logEmbed] });
+    }
+
+    // Exclusion temporelle standard (?to) ou retrait d'exclusion (?rto)
+    if (command === 'to' || command === 'rto') {
+        setTimeout(() => message.delete().catch(() => null), 200);
+        if (!moderateMembersPerm) {
             return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Permission denied.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         }
-        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!target) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "❌ Please mention a valid member. Usage: `?to @member [duration] [reason]`")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
 
-        let timeArg = args[1]; 
+        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
+        if (!target) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "❌ Please mention a valid member.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+
+        if (command === 'rto') {
+            try {
+                await target.timeout(null);
+                const logEmbed = createPrefixEmbed('Timeout Removal Completed', 'Voice and text restrictions revoked.', [
+                    { name: '👤 Target Member', value: target.toString(), inline: true },
+                    { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
+                ]);
+                return message.channel.send({ embeds: [logEmbed] });
+            } catch (e) {
+                return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Could not remove timeout.")] });
+            }
+        }
+
+        let timeArg = args[1];
         let durationMs = parseDuration(timeArg);
         let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
         let finalDuration = durationMs || (60 * 1000);
-        
-        if (finalDuration > 28 * 24 * 60 * 60 * 1000) { 
-            finalDuration = 28 * 24 * 60 * 60 * 1000; 
-            timeArg = "28d (Discord Max)"; 
+
+        if (finalDuration > 28 * 24 * 60 * 60 * 1000) {
+            finalDuration = 28 * 24 * 60 * 60 * 1000;
+            timeArg = "28d (Discord Max)";
         }
-        
+
         try {
             await target.timeout(finalDuration, reason);
             const logEmbed = createPrefixEmbed('Timeout Execution Completed', 'Action successfully authorized on target parameters.', [
@@ -358,112 +409,165 @@ async function handleAdvancedModCommands(message, command, args, banPerm) {
                 { name: '⏱️ Total Duration', value: (timeArg || '1m'), inline: true },
                 { name: '📄 Stated Reason', value: reason, inline: false },
                 { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
-            ]);
+                ]);
             return message.channel.send({ embeds: [logEmbed] });
         } catch (err) {
             return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Unable to target this user. Verify hierarchical permissions.")] });
         }
     }
+
+    // Bannissement définitif (?ban)
+    if (command === 'ban') {
+        setTimeout(() => message.delete().catch(() => null), 200);
+        if (!banPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Permission denied.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
+        if (!target) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "❌ Usage: `?ban @member [reason]`")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+
+        const reason = args.slice(1).join(' ') || "No reason provided";
+        try {
+            await target.ban({ reason: reason });
+            const logEmbed = createPrefixEmbed('Banishment Sequence Executed', 'Profile permanently terminated from the server.', [
+                { name: '👤 Target Entity', value: target.user.tag, inline: true },
+                { name: '📄 Stated Reason', value: reason, inline: false },
+                { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
+            ]);
+            return message.channel.send({ embeds: [logEmbed] });
+        } catch (e) {
+            return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Failed to ban. Hierarchical restriction.")] });
+        }
+    }
+
+    // Annulation de bannissement (?unban)
+    if (command === 'unban') {
+        setTimeout(() => message.delete().catch(() => null), 200);
+        if (!banPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Permission denied.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        const targetId = args[0];
+        if (!targetId) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "❌ Usage: `?unban [User_ID]`")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+
+        try {
+            await message.guild.members.unban(targetId);
+            const logEmbed = createPrefixEmbed('Banishment Revoked', 'Identity cleared for server re-entry.', [
+                { name: '🆔 Cleared ID', value: targetId, inline: true },
+                { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
+            ]);
+            return message.channel.send({ embeds: [logEmbed] });
+        } catch (e) {
+            return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Invalid User ID or entity not banned.")] });
+        }
+    }
 }
 // ==========================================
-// PARTIE 3 : INTERACTIONS SLASH ET PARAMÈTRES STATS
+// PARTIE 5.1 : VÉRIFICATIONS DES DROITS ET COMMANDE /RENAME UNIVERSELLE
 // ==========================================
 
 client.on('interactionCreate', async (interaction) => {
-    // Restriction de sécurité sur les commandes de gestion des giveaways
+    // Vérification des droits giveaways (Staff uniquement)
     if (interaction.isChatInputCommand() && ['gcreate', 'gend', 'greroll'].includes(interaction.commandName)) {
         if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
             return interaction.reply({ content: "❌ You must be a **Staff Member** (with Timeout permissions) to manage giveaways.", ephemeral: true });
         }
     }
 
-    // Restriction stricte Administrateurs
+    // Vérification des droits administrateurs (Admins uniquement)
     if (interaction.isChatInputCommand() && ['gwblacklist', 'gwunblacklist', 'statsreset'].includes(interaction.commandName)) {
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({ content: "❌ This command is strictly restricted to **Server Administrators**.", ephemeral: true });
         }
     }
 
-    // Restriction Menu Select Modérateurs
+    // Vérifications sur le menu de sélection de mode de giveaway
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
         if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
             return interaction.reply({ content: "❌ You don't have Staff permissions to interact with this setup menu.", ephemeral: true });
         }
     }
 
-    // Restriction Soumissions Modals Modérateurs
+    // Vérifications sur la soumission des formulaires de giveaway
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_waffel_')) {
         if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
             return interaction.reply({ content: "❌ Permission denied. This action is restricted to Staff.", ephemeral: true });
         }
     }
 
-    // Traitement des commandes de type Chat Input (Slash)
     if (interaction.isChatInputCommand()) {
         const targetUser = interaction.options.getUser('target') || interaction.user;
 
-        // Commande /rename (Spécifique aux salons tickets)
+        // Commande /rename universelle : modifiable à l'infini (soumis aux Rate Limits de Discord)
         if (interaction.commandName === 'rename') {
             const member = interaction.member;
             const isStaff = member.roles && member.roles.cache && member.roles.cache.has(SECURE_STAFF_ROLE_ID);
             const isAdmin = member.permissions && member.permissions.has(PermissionFlagsBits.Administrator);
 
             if (!isStaff && !isAdmin) {
-                return interaction.reply({ content: 'Only authenticated operational staff can perform configuration renames.', ephemeral: true });
+                return interaction.reply({ content: '❌ Only authenticated operational staff can perform configuration renames.', ephemeral: true });
             }
             
             const channel = interaction.channel;
             if (!channel || !channel.isTextBased()) {
-                return interaction.reply({ content: '❌ This command only works in a text channel.', ephemeral: true });
-            }
-
-            const channelName = (channel.name || '').toLowerCase();
-            if (!channelName.startsWith('ticket-') && !channelName.startsWith('🎫-')) {
-                return interaction.reply({ content: '❌ This command only works in ticket channels.', ephemeral: true });
+                return interaction.reply({ content: '❌ This command only works in a valid text channel.', ephemeral: true });
             }
 
             const newNameRaw = interaction.options.getString('name', true);
             const newName = ensureTicketChannelName(newNameRaw);
             if (!newName) {
-                return interaction.reply({ content: '❌ Invalid ticket name.', ephemeral: true });
+                return interaction.reply({ content: '❌ Invalid channel name format.', ephemeral: true });
             }
 
-            await channel.setName(newName);
-            return interaction.reply({ content: 'Successfully changed channel identity state to: **' + newName + '**', ephemeral: true });
-        }
-
-        // Commande /stats
-        if (interaction.commandName === 'stats') {
-            initStats(targetUser.id);
-            const userStats = statsDatabase[targetUser.id];
-            const winRate = userStats.entered > 0 ? ((userStats.won / userStats.entered) * 100).toFixed(1) : '0.0';
-
-            const statsEmbed = new EmbedBuilder()
-                .setTitle("📊 Giveaway Statistics - " + targetUser.username)
-                .setColor('#F1C40F')
-                .setThumbnail(targetUser.displayAvatarURL())
-                .addFields(
-                    { name: '📥 Giveaways Entered', value: "`" + userStats.entered + "` times", inline: true },
-                    { name: '🏆 Giveaways Won', value: "`" + userStats.won + "` times", inline: true },
-                    { name: '📈 Win Rate Percentage', value: "`" + winRate + "%`" }
-                )
-                .setFooter({ text: "Waffel's Analytical System" })
-                .setTimestamp();
-
-            return interaction.reply({ embeds: [statsEmbed] });
+            try {
+                await channel.setName(newName);
+                return interaction.reply({ content: 'Successfully changed channel identity state to: **' + newName + '**', ephemeral: true });
+            } catch (err) {
+                console.error('Failed to rename channel:', err);
+                if (err.code === 50035 || err.message.toLowerCase().includes('rate limit')) {
+                    return interaction.reply({
+                        content: '⚠️ **Discord Rate Limit !** Vous renommez ce salon trop vite. Veuillez patienter 5 à 10 minutes avant de pouvoir changer son nom à nouveau.',
+                        ephemeral: true
+                    });
+                }
+                return interaction.reply({ content: '❌ Failed to rename channel. Verify bot permissions (Manage Channels).', ephemeral: true });
+            }
         }
         
-        handleUtilitySlashCommands(interaction, targetUser);
+        // La suite de la détection ChatInput est envoyée dans la Partie 5.2
+        handleStatsAndRestOfSlashCommands(interaction, targetUser);
     }
     
     handleComponentInteractions(interaction);
 });
 // ==========================================
-// PARTIE 4 : UTREILS ET COMMANDES UTILITAIRES SLASH
+// PARTIE 5.2 : COMMANDE SLASHS D'AFFICHAGE DES STATISTIQUES
+// ==========================================
+
+async function handleStatsAndRestOfSlashCommands(interaction, targetUser) {
+    // Commande /stats
+    if (interaction.commandName === 'stats') {
+        initStats(targetUser.id);
+        const userStats = statsDatabase[targetUser.id];
+        const winRate = userStats.entered > 0 ? ((userStats.won / userStats.entered) * 100).toFixed(1) : '0.0';
+
+        const statsEmbed = new EmbedBuilder()
+            .setTitle("📊 Giveaway Statistics - " + targetUser.username)
+            .setColor('#F1C40F')
+            .setThumbnail(targetUser.displayAvatarURL())
+            .addFields(
+                { name: '📥 Giveaways Entered', value: "`" + userStats.entered + "` times", inline: true },
+                { name: '🏆 Giveaways Won', value: "`" + userStats.won + "` times", inline: true },
+                { name: '📈 Win Rate Percentage', value: "`" + winRate + "%`" }
+            )
+            .setFooter({ text: "Waffel's Analytical System" })
+            .setTimestamp();
+
+        return interaction.reply({ embeds: [statsEmbed] });
+    }
+    
+    // Redirection automatique vers les commandes utilitaires globales
+    handleUtilitySlashCommands(interaction, targetUser);
+}
+// ==========================================
+// PARTIE 6.1 : COMMANDES UTILITAIRES ET DOCUMENTATION SLASHS
 // ==========================================
 
 async function handleUtilitySlashCommands(interaction, targetUser) {
-    // Commande /statsreset
     if (interaction.commandName === 'statsreset') {
         const target = interaction.options.getUser('target');
         statsDatabase[target.id] = { entered: 0, won: 0 };
@@ -472,72 +576,68 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
         const resetEmbed = new EmbedBuilder()
             .setTitle('🔄 Statistics Successfully Reset')
             .setColor('#E74C3C')
-            .setDescription("All giveaway statistics (entries, wins, and win rate) for " + target.toString() + " have been completely wiped.")
+            .setDescription("All giveaway statistics for " + target.toString() + " have been completely wiped.")
             .setFooter({ text: "Waffel's Database Management" })
             .setTimestamp();
 
         return interaction.reply({ embeds: [resetEmbed] });
     }
 
-    // Commande /help
     if (interaction.commandName === 'help') {
-        const embed = new EmbedBuilder().setTitle('📋 Available Bot Commands Inventory').setColor('#F1C40F').setDescription('Here is a complete list of all the features integrated into this bot:\n\n').addFields(
-                { name: '✨ Slash Commands (/)', value: '`/ticket` - Opens a support ticket\n`/close` - Closes the current ticket channel\n`/help` - Displays this menu\n`/wjamal` - Sends a random funny frog GIF\n`/claimtime` - Displays official giveaway claim times and rules\n`/userinfo` - Shows profile information\n`/serverinfo` - Displays server stats\n`/avatar` - Displays member avatar\n`/infractions` - Shows warnings\n`/gcreate` - Opens the giveaway setup menu\n`/gend` - Ends a giveaway manually\n`/greroll` - Rerolls a giveaway winner\n`/gwblacklist` - Blacklists a user from giveaways\n`/gwunblacklist` - Removes a user from the blacklist\n`/winnerinfo` - Displays the summary of the last giveaway\n`/faq` - Display the server FAQ guide\n`/stats` - Display your giveaway stats and win rate\n`/statsreset` - Reset a user\'s statistics\n`/rename` - Renames a ticket channel (Staff)' },
-                { name: '🛠️ Prefix Commands (?)', value: '`?lock` - Disables message sending\n`?unlock` - Enables message sending again\n`?clear <amount>` - Bulk deletes messages\n`?roleadd @member @role` - Adds a role\n`?unwarn @member` - Removes the latest warning\n`?to @member <duration> <reason>` - Times out a user' },
-                { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway (Requires Staff privileges).' }
+        const embed = new EmbedBuilder().setTitle('📋 Available Bot Commands Inventory').setColor('#F1C40F').setDescription('Here is a complete list of all features integrated:\n\n').addFields(
+                { name: '✨ Slash Commands (/)', value: '`/ticket` - Opens a support ticket\n`/close` - Closes active ticket channel\n`/help` - Displays this menu\n`/wjamal` - Sends frog GIF\n`/claimtime` - Displays rules\n`/userinfo` - Shows info\n`/serverinfo` - Displays server metrics\n`/avatar` - Avatar view\n`/infractions` - Warnings ledger\n`/gcreate` - Giveaway setup\n`/gend` - Force close\n`/greroll` - Re-roll winner\n`/gwblacklist` - Blacklist user\n`/gwunblacklist` - Unblacklist user\n`/stats` - Giveaway stats\n`/statsreset` - Wipe stats\n`/rename` - Renames channel' },
+                { name: '🛠️ Prefix Commands (?)', value: '`?warn` - Warn user\n`?to` - Timeout member\n`?rto` - Remove timeout\n`?ban` - Ban user\n`?unban` - Unban profile\n`?lock` - Lock stream\n`?unlock` - Unlock channel\n`?clear <count>` - Purge messages\n`?roleadd @user @role` - Add role\n`?unwarn @user` - Pop warning' },
+                { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway.' }
             ).setFooter({ text: "Waffel's Giveaway Utility" });
         return interaction.reply({ embeds: [embed] });
     }
 
-    // Commande /claimtime
     if (interaction.commandName === 'claimtime') {
         const embed = new EmbedBuilder().setTitle('🎉 Giveaway Info').setColor('#F1C40F').setDescription(
-            "⏰ **Giveaway Claim Time**\n🏆 Quickdrops - 30 Minutes\n🎁 Weekly/Daily Giveaways - 24 hours\n🎉 Big Giveaways - 12 hours\n🏮 Stream Quickdrops - 3 Hours\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬" 
+            "⏰ **Giveaway Claim Time**\n🏆 Quickdrops - 30 Minutes\n🎁 Weekly/Daily Giveaways - 24 hours\n🎉 Big Giveaways - 12 hours\n🏮 Stream Quickdrops - 3 Hours" 
         ).setTimestamp();
         return interaction.reply({ embeds: [embed] });
     }
+    
+    handleRestOfUtilitySlashCommands(interaction, targetUser);
+}
+// ==========================================
+// PARTIE 6.2 : COMMANDES UTREILS ET GESTION DES TICKETS D'OUVERTURE
+// ==========================================
 
-    // Commande /wjamal
+async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
     if (interaction.commandName === 'wjamal') {
         const embed = new EmbedBuilder().setTitle('🐸 W JAMAL').setColor('#2ECC71').setImage('https://giphy.com');
         return interaction.reply({ embeds: [embed] });
     }
 
-    // Commande /userinfo
     if (interaction.commandName === 'userinfo') {
         const embed = new EmbedBuilder().setTitle("👤 User Info - " + targetUser.tag).setColor('#F1C40F').setThumbnail(targetUser.displayAvatarURL())
             .addFields({ name: '🆔 User ID', value: targetUser.id, inline: true }, { name: '📅 Created Account', value: "<t:" + Math.floor(targetUser.createdTimestamp / 1000) + ":R>", inline: true }, { name: '🤖 Bot?', value: targetUser.bot ? 'Yes' : 'No', inline: true });
         return interaction.reply({ embeds: [embed] });
     }
 
-    // Commande /serverinfo
     if (interaction.commandName === 'serverinfo') {
         const embed = new EmbedBuilder().setTitle("📊 Server Info - " + interaction.guild.name).setColor('#F1C40F').setThumbnail(interaction.guild.iconURL())
             .addFields({ name: '👑 Owner', value: "<@" + interaction.guild.ownerId + ">", inline: true }, { name: '👥 Total Members', value: "" + interaction.guild.memberCount, inline: true }, { name: '📁 Channel Count', value: "" + interaction.guild.channels.cache.size, inline: true });
         return interaction.reply({ embeds: [embed] });
     }
 
-    // Commande /avatar
     if (interaction.commandName === 'avatar') {
-        const embed = new EmbedBuilder().setTitle("🖼️ Avatar of " + targetUser.tag).setColor('#F1C40F').setImage(targetUser.displayAvatarURL({ size: 1024 })).setFooter({ text: "Waffel's Giveaway Utility" });
+        const embed = new EmbedBuilder().setTitle("🖼️ Avatar of " + targetUser.tag).setColor('#F1C40F').setImage(targetUser.displayAvatarURL({ size: 1024 }));
         return interaction.reply({ embeds: [embed] });
     }
 
-    // Commande /infractions
     if (interaction.commandName === 'infractions') {
         const warns = warnDatabase[targetUser.id] || [];
         const embed = new EmbedBuilder().setTitle("📜 Moderation History for " + targetUser.username).setColor(warns.length > 0 ? '#E74C3C' : '#2ECC71');
-        if (warns.length === 0) { embed.setDescription("✅ This user has a perfectly clean record. No infractions found!"); } 
+        if (warns.length === 0) { embed.setDescription("✅ This user has a perfectly clean record."); } 
         else { embed.setDescription("⚠️ Total Warnings: **" + warns.length + "**"); warns.forEach((warn, index) => { embed.addFields({ name: "Warning #" + (index + 1) + " (" + warn.date + ")", value: "**Reason:** " + warn.reason + "\n**Moderator:** " + warn.moderator }); }); }
-        return interaction.reply({ embeds: [embed] });
+        return interaction.reply({ embeds: [warns.length > 0 ? { embeds: [embed] } : { embeds: [embed] }] });
     }
 
-    // Commande /faq ou /ticket d'ouverture
     if (interaction.commandName === 'faq') {
-        const embed = new EmbedBuilder()
-            .setTitle('📖 FAQ')
-            .setColor('#F1C40F')
-            .setDescription('Q: How do I join?\nA: Follow the server rules and channels.\n\nQ: How do I claim rewards?\nA: Ask staff in a ticket channel.');
+        const embed = new EmbedBuilder().setTitle('📖 FAQ').setColor('#F1C40F').setDescription('Q: How do I join?\nA: Follow server channels.\n\nQ: How do I claim rewards?\nA: Click claim and complete support forms.');
         return interaction.reply({ embeds: [embed] });
     }
 
@@ -555,7 +655,7 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
             type: ChannelType.GuildText,
             parent: category ? category.id : undefined,
             permissionOverwrites: [
-                { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
+                { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
                 { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
                 { id: SECURE_STAFF_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages] }
             ]
@@ -563,63 +663,46 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
 
         ticketData.set(channel.id, { ownerId: userId, createdAt: Date.now() });
 
-        const embed = new EmbedBuilder()
-            .setColor('#00aaff')
-            .setTitle('🎫 Ticket Opened')
-            .setDescription(`Hello ${member.user}, your ticket has been created.`)
-            .addFields(
-                { name: 'Support Staff', value: 'A staff member will assist you shortly.', inline: false },
-                { name: 'Channel', value: `<#${channel.id}>`, inline: false }
-            )
-            .setTimestamp();
+        const embed = new EmbedBuilder().setColor('#00aaff').setTitle('🎫 Ticket Opened').setDescription(`Hello ${member.user}, your ticket has been created.`)
+            .addFields({ name: 'Support Staff', value: 'A staff member will assist you shortly.', inline: false }, { name: 'Channel', value: `<#${channel.id}>`, inline: false }).setTimestamp();
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`ticket-close-${channel.id}`).setLabel('Close Ticket 🔴').setStyle(ButtonStyle.Danger)
-        );
-
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`ticket-close-${channel.id}`).setLabel('Close Ticket 🔴').setStyle(ButtonStyle.Danger));
         await channel.send({ embeds: [embed], components: [row] });
         return interaction.reply({ content: `✅ Your ticket has been created: <#${channel.id}>`, ephemeral: true });
     }
 
-    // Envoi vers le moteur de création de giveaways
     handleGiveawayEngineSlashCommands(interaction);
 }
 // ==========================================
-// PARTIE 5.1 : COMMANDES ET CONFIGURATION DU MOTEUR DE GIVEAWAY
+// PARTIE 6.3 : FORMULAIRES DE CONFIGURATION ET ATTRIBUTION BLACKLIST
 // ==========================================
 
 async function handleGiveawayEngineSlashCommands(interaction) {
-    // Menu de configuration initial via /gcreate
     if (interaction.commandName === 'gcreate') {
         const menu = new StringSelectMenuBuilder().setCustomId('select_waffel_mode').setPlaceholder('🎯 Choose a Giveaway Game Mode...')
             .addOptions(
-                new StringSelectMenuOptionBuilder().setLabel('Normal Mode').setDescription('Classic giveaway.').setValue('normal').setEmoji('🎉'),
-                new StringSelectMenuOptionBuilder().setLabel('Waffle Clicker').setDescription('First one to click the button wins instantly! 🧇').setValue('clicker').setEmoji('⚡'),
-                new StringSelectMenuOptionBuilder().setLabel('Double Or Keep (DoK)').setDescription('Keep or double and reroll!').setValue('dok').setEmoji('🟢'),
-                new StringSelectMenuOptionBuilder().setLabel('Split Or Steal (SoS)').setDescription('Share or betray?').setValue('sos').setEmoji('⚔️'),
-                new StringSelectMenuOptionBuilder().setLabel('Rock Paper Scissors (RPS)').setDescription('RPS Battle!').setValue('rps').setEmoji('🪨')
+                new StringSelectMenuOptionBuilder().setLabel('Normal Mode').setValue('normal').setEmoji('🎉'),
+                new StringSelectMenuOptionBuilder().setLabel('Waffle Clicker').setValue('clicker').setEmoji('⚡'),
+                new StringSelectMenuOptionBuilder().setLabel('Double Or Keep (DoK)').setValue('dok').setEmoji('🟢'),
+                new StringSelectMenuOptionBuilder().setLabel('Split Or Steal (SoS)').setValue('sos').setEmoji('⚔️'),
+                new StringSelectMenuOptionBuilder().setLabel('Rock Paper Scissors (RPS)').setValue('rps').setEmoji('🪨')
             );
         const row = new ActionRowBuilder().addComponents(menu);
         const embed = new EmbedBuilder().setTitle("🧇 Waffel's Giveaway Setup Menu").setDescription('Please select a game mode below.').setColor('#F1C40F');
         return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     }
 
-    // Arrêt forcé d'un giveaway actif via /gend
     if (interaction.commandName === 'gend') {
         const msgId = interaction.options.getString('message_id');
-        const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
-        if (!targetMsg) return interaction.reply({ content: "❌ Giveaway message not found in this channel.", ephemeral: true });
-        await interaction.reply({ content: "🔒 Ending the giveaway early...", ephemeral: true });
-        
         if (giveawaysDatabase[msgId]) {
+            await interaction.reply({ content: "🔒 Ending the giveaway early...", ephemeral: true });
             runGiveawayEnd(interaction.channel, msgId);
         } else {
-            return targetMsg.edit({ components: targetMsg.components }).catch(() => null);
+            return interaction.reply({ content: "❌ Giveaway active entry not found.", ephemeral: true });
         }
         return;
     }
 
-    // Relancement / Nouveau tirage via /greroll
     if (interaction.commandName === 'greroll') {
         const msgId = interaction.options.getString('message_id');
         const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
@@ -627,22 +710,16 @@ async function handleGiveawayEngineSlashCommands(interaction) {
         const originalEmbed = targetMsg.embeds[0];
         const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Each winner gets:\*\* (.+)/) : null;
         let prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
-        prize = prize.replace(/\bwaffle\b/gi, '🧇');
 
         let eligiblePool = [];
         if (giveawaysDatabase[msgId] && giveawaysDatabase[msgId].participants.length > 0) {
-            const cacheMembers = await interaction.guild.members.fetch();
-            eligiblePool = giveawaysDatabase[msgId].participants.filter(id => {
-                const memberObj = cacheMembers.get(id);
-                if (!memberObj) return false;
-                return !memberObj.user.bot && !blacklistDatabase.has(id) && !memberObj.permissions.has(PermissionFlagsBits.ModerateMembers);
-            });
+            eligiblePool = giveawaysDatabase[msgId].participants.filter(id => !blacklistDatabase.has(id));
         } else {
             const allMembers = await interaction.guild.members.fetch();
-            eligiblePool = allMembers.filter(m => !m.user.bot && !blacklistDatabase.has(m.id) && !m.permissions.has(PermissionFlagsBits.ModerateMembers)).map(m => m.id);
+            eligiblePool = allMembers.filter(m => !m.user.bot && !blacklistDatabase.has(m.id)).map(m => m.id);
         }
 
-        if (eligiblePool.length === 0) return interaction.reply({ content: "❌ Could not find eligible participants to reroll.", ephemeral: true });
+        if (eligiblePool.length === 0) return interaction.reply({ content: "❌ Could not find eligible participants.", ephemeral: true });
         const luckyId = eligiblePool[Math.floor(Math.random() * eligiblePool.length)];
         const randomMember = await interaction.guild.members.fetch(luckyId);
 
@@ -651,164 +728,110 @@ async function handleGiveawayEngineSlashCommands(interaction) {
         const cleanHost = hostMatch ? hostMatch[1] : interaction.user.toString();
 
         const claimBtn = new ButtonBuilder().setCustomId("claim_gw_" + randomMember.id + "_" + Buffer.from(prize).toString('base64') + "_" + Buffer.from(cleanHost).toString('base64')).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
-        const claimRow = new ActionRowBuilder().addComponents(claimBtn);
 
-        initStats(randomMember.id);
-        statsDatabase[randomMember.id].won += 1;
-        saveDatabase();
-
-        await interaction.channel.send({ 
-            content: "🎲 **NEW REROLL WINNER!** Congratulations " + randomMember.toString() + ", you won **" + prize + "**! 🎁✨\nClick the button below to claim your prize!",
-            components: [claimRow]
-        });
+        initStats(randomMember.id); statsDatabase[randomMember.id].won += 1; saveDatabase();
+        await interaction.channel.send({ content: "🎲 **NEW REROLL WINNER!** Congratulations " + randomMember.toString() + ", you won **" + prize + "**!\nClick the button to claim!", components: [new ActionRowBuilder().addComponents(claimBtn)] });
         return;
     }
 
     if (interaction.commandName === 'close') {
         return processTicketClosure(interaction);
     }
-    
     handleAdminBlacklistSlashCommands(interaction);
 }
 
 async function handleAdminBlacklistSlashCommands(interaction) {
     if (interaction.commandName === 'gwblacklist') {
         const target = interaction.options.getUser('target');
-        if (blacklistDatabase.has(target.id)) return interaction.reply({ content: "⚠️ " + target.username + " is already on the giveaway blacklist.", ephemeral: true });
         blacklistDatabase.add(target.id); saveDatabase();
-        return interaction.reply({ content: "🚫 Successfully added " + target.toString() + " to the **@Giveaway Blacklist**." });
+        return interaction.reply({ content: "🚫 Successfully blacklisted " + target.toString() });
     }
     if (interaction.commandName === 'gwunblacklist') {
         const target = interaction.options.getUser('target');
-        if (!blacklistDatabase.has(target.id)) return interaction.reply({ content: "⚠️ " + target.username + " is not currently blacklisted.", ephemeral: true });
         blacklistDatabase.delete(target.id); saveDatabase();
-        return interaction.reply({ content: "✅ Successfully removed " + target.toString() + " from the giveaway blacklist." });
+        return interaction.reply({ content: "✅ Successfully unblacklisted " + target.toString() });
     }
 }
-// ==========================================
-// PARTIE 5.2 : FORMULAIRES ET TICKET DE RÉCLAMATION AUTOMATIQUE (CORRIGÉ)
-// ==========================================
 
 async function handleComponentInteractions(interaction) {
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
-        const mode = interaction.values[0]; 
-        const modal = new ModalBuilder().setCustomId("modal_waffel_" + mode).setTitle("Setup: " + mode.toUpperCase() + " Mode 🧇");
-        const pInput = new TextInputBuilder().setCustomId('input_prize').setLabel("What is the prize / amount?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 50m / Waffles").setRequired(true);
-        const dInput = new TextInputBuilder().setCustomId('input_duration').setLabel("Duration (e.g., 5h, 45s, 10m):").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 5h or 30s").setRequired(true);
-        const wInput = new TextInputBuilder().setCustomId('input_winners').setLabel("Number of winners:").setStyle(TextInputStyle.Short).setRequired(true);
-        const descInput = new TextInputBuilder().setCustomId('input_description').setLabel("Optional Title / Description:").setStyle(TextInputStyle.Paragraph).setPlaceholder("e.g., 1B / Flash (Leave blank for default)").setRequired(false);
-        
-        if (mode === 'sos' || mode === 'rps') { wInput.setPlaceholder("Must be 2").setValue("2"); } 
-        else if (mode === 'clicker') { wInput.setPlaceholder("Must be 1").setValue("1").setRequired(false); }
-        else { wInput.setPlaceholder("e.g., 1").setValue("1"); }
-        
+        const mode = interaction.values[0];
+        const modal = new ModalBuilder().setCustomId("modal_waffel_" + mode).setTitle("Setup: " + mode.toUpperCase());
+        const pInput = new TextInputBuilder().setCustomId('input_prize').setLabel("Prize:").setStyle(TextInputStyle.Short).setRequired(true);
+        const dInput = new TextInputBuilder().setCustomId('input_duration').setLabel("Duration (e.g. 5h, 10m):").setStyle(TextInputStyle.Short).setRequired(true);
+        const wInput = new TextInputBuilder().setCustomId('input_winners').setLabel("Winners count:").setStyle(TextInputStyle.Short).setValue("1").setRequired(true);
+        const descInput = new TextInputBuilder().setCustomId('input_description').setLabel("Optional Title:").setStyle(TextInputStyle.Paragraph).setRequired(false);
+
         modal.addComponents(new ActionRowBuilder().addComponents(pInput), new ActionRowBuilder().addComponents(dInput), new ActionRowBuilder().addComponents(wInput), new ActionRowBuilder().addComponents(descInput));
         await interaction.showModal(modal);
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_waffel_')) {
         const mode = interaction.customId.replace('modal_waffel_', '');
-        let prize = interaction.fields.getTextInputValue('input_prize');
+        let prize = interaction.fields.getTextInputValue('input_prize').replace(/\bwaffle\b/gi, '👑');
         const durationStr = interaction.fields.getTextInputValue('input_duration');
         const descriptionOpt = interaction.fields.getTextInputValue('input_description') || null;
-        let winners = parseInt(interaction.fields.getTextInputValue('input_winners'), 10);
+        let winners = parseInt(interaction.fields.getTextInputValue('input_winners'), 10) || 1;
 
-        prize = prize.replace(/\bwaffle\b/gi, '🧇');
         const durationMs = parseDuration(durationStr);
-        if (!durationMs || durationMs <= 0) return interaction.reply({ content: "❌ Invalid duration format! Use formats like `45s`, `10m` or `5h`.", ephemeral: true });
-        if (isNaN(winners) || winners <= 0) winners = 1;
-        if ((mode === 'sos' || mode === 'rps') && winners !== 2) return interaction.reply({ content: "❌ Requires exactly 2 winners.", ephemeral: true });
-        if (mode === 'clicker') winners = 1;
-        
-        await interaction.reply({ content: "✅ Successfully created your " + mode.toUpperCase() + " giveaway!", ephemeral: true });
+        if (!durationMs || durationMs <= 0) return interaction.reply({ content: "❌ Invalid duration format!", ephemeral: true });
+
+        await interaction.reply({ content: "✅ Giveaway created!", ephemeral: true });
         startGiveawayEngine(interaction.channel, durationMs, prize, winners, mode, descriptionOpt, interaction.user);
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_claim_ticket_')) {
         const customIdParts = interaction.customId.split('_');
-        
-        // RECALIBRAGE DES INDICES : Correspondance exacte avec la structure du bouton claim_gw
-        const prizeAmount = Buffer.from(customIdParts[4], 'base64').toString('utf8');
-        const hostName = Buffer.from(customIdParts[5], 'base64').toString('utf8');
+        const prizeAmount = Buffer.from(customIdParts[3], 'base64').toString('utf8');
+        const hostName = Buffer.from(customIdParts[4], 'base64').toString('utf8');
         const ignName = interaction.fields.getTextInputValue('claim_ign');
 
         await interaction.deferReply({ ephemeral: true });
         try {
-            const channelOptions = {
+            const ticketChannel = await interaction.guild.channels.create({
                 name: "🎫-" + interaction.user.username,
                 type: ChannelType.GuildText,
-                parent: SECURE_CATEGORY_ID, 
+                parent: SECURE_CATEGORY_ID,
                 permissionOverwrites: [
                     { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-                    { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                    { id: SECURE_STAFF_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+                    { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+                    { id: SECURE_STAFF_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
                 ],
-            };
-
-            const ticketChannel = await interaction.guild.channels.create(channelOptions);
-            ticketData.set(ticketChannel.id, { ownerId: interaction.user.id, createdAt: Date.now() });
-
-            const ticketEmbed = new EmbedBuilder()
-                .setTitle('📥 New Giveaway Claim Ticket Opened')
-                .setColor('#2ECC71')
-                .setDescription("Welcome " + interaction.user.toString() + ", our support team will handle your reward transaction shortly!\n\n*Staff members can click the red button below to close and delete this channel.*")
-                .addFields(
-                    { name: '👤 Verified Winner', value: interaction.user.toString(), inline: true },
-                    { name: '🎁 Prize Handed Out', value: prizeAmount, inline: true },
-                    { name: '🎮 In-Game Name (IGN)', value: ignName, inline: true },
-                    { name: '👑 Giveaway Host', value: hostName, inline: true }
-                )
-                .setFooter({ text: "Waffel's Automated Tickets" })
-                .setTimestamp();
-
-            await ticketChannel.send({ 
-                content: "🔔 <@&" + SECURE_STAFF_ROLE_ID + "> | New claim request from " + interaction.user.toString(), 
-                embeds: [ticketEmbed],
-                components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('close_giveaway_ticket').setLabel('Close Ticket 🔴').setStyle(ButtonStyle.Danger))]
             });
-            await interaction.editReply({ content: "✅ Your ticket channel has been created successfully: " + ticketChannel.toString() });
-        } catch (error) {
-            await interaction.editReply({ content: "❌ An error occurred while auto-generating your private ticket channel." });
+
+            ticketData.set(ticketChannel.id, { ownerId: interaction.user.id, createdAt: Date.now() });
+            const embed = new EmbedBuilder().setTitle('📥 Claim Ticket').setColor('#2ECC71')
+                .addFields({ name: 'Winner', value: interaction.user.toString(), inline: true }, { name: '🎁 Prize', value: prizeAmount, inline: true }, { name: '🎮 IGN', value: ignName, inline: true }, { name: '👑 Host', value: hostName, inline: true });
+
+            await ticketChannel.send({ content: "🔔 <@&" + SECURE_STAFF_ROLE_ID + ">", embeds: [embed], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('close_giveaway_ticket').setLabel('Close Ticket 🔴').setStyle(ButtonStyle.Danger))] });
+            await interaction.editReply({ content: "✅ Ticket created: " + ticketChannel.toString() });
+        } catch (e) {
+            await interaction.editReply({ content: "❌ Auto-generation error." });
         }
     }
-    
     handleButtonsEngineProcessing(interaction);
 }
 // ==========================================
-// PARTIE 6.1 : FORMULAIRES DE RÉCLAMATION ET BOUTONS DE TICKETS
+// PARTIE 7.1 : BLOCAGE SÉCURISÉ DU STAFF SUR L'INSCRIPTION ET APPEL DU MOTEUR
 // ==========================================
 
 async function handleButtonsEngineProcessing(interaction) {
     if (interaction.isButton() && interaction.customId.startsWith('claim_gw_')) {
         const parts = interaction.customId.split('_');
-        const allowedWinnerId = parts[2]; 
-        const rawPrizeB64 = parts[3];     
-        const rawHostB64 = parts[4];      
+        const allowedWinnerId = parts[2]; const rawPrizeB64 = parts[3]; const rawHostB64 = parts[4];      
+        if (interaction.user.id !== allowedWinnerId) return interaction.reply({ content: "❌ Access Denied.", ephemeral: true });
 
-        if (interaction.user.id !== allowedWinnerId) {
-            return interaction.reply({ content: "❌ **Access Denied.** You are not the registered winner of this giveaway.", ephemeral: true });
-        }
-
-        const modal = new ModalBuilder()
-            .setCustomId("modal_claim_ticket_" + allowedWinnerId + "_" + rawPrizeB64 + "_" + rawHostB64)
-            .setTitle('Claim Giveaway Reward Menu 🏆');
-            
-        const ignInput = new TextInputBuilder()
-            .setCustomId('claim_ign')
-            .setLabel("What is your In-Game Name (IGN)?")
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder("e.g., WaffelPlayer99")
-            .setRequired(true);
-            
+        const modal = new ModalBuilder().setCustomId("modal_claim_ticket_" + allowedWinnerId + "_" + rawPrizeB64 + "_" + rawHostB64).setTitle('Claim Reward Menu');
+        const ignInput = new TextInputBuilder().setCustomId('claim_ign').setLabel("What is your IGN?").setStyle(TextInputStyle.Short).setRequired(true);
         modal.addComponents(new ActionRowBuilder().addComponents(ignInput));
         await interaction.showModal(modal);
     }
 
     if (interaction.isButton() && interaction.customId === 'close_giveaway_ticket') {
         if (!interaction.member.roles.cache.has(SECURE_STAFF_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: "❌ Only Staff Members are authorized to close giveaway claim tickets.", ephemeral: true });
+            return interaction.reply({ content: "❌ Staff access only.", ephemeral: true });
         }
-        await interaction.reply({ content: "🔒 **Closing ticket...** This channel will be deleted in 5 seconds." });
+        await interaction.reply({ content: "🔒 Purging channel in 5 seconds..." });
         setTimeout(async () => { await interaction.channel.delete().catch(() => null); }, 5000);
         return;
     }
@@ -819,263 +842,185 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
     const endTimeStamp = Math.floor(endTime / 1000);
     const title = customTitle ? " 🧇 " + customTitle + " 🧇 " : "✨ WAFFEL'S GIVEAWAY ✨";
 
-    let description = "⏳ **Ends:** <t:" + endTimeStamp + ":R> (<t:" + endTimeStamp + ":F>)\n👑 **Hosted by:** " + hostUser.toString() + "\n👥 **Entries:** **0**\n🏆 **Winners:** **" + winnerCount + "**\n🎁 **Each winner gets:** **" + prize + "**";
-    if (mode === 'clicker') { 
-        description = "⚡ **WAFFLE CLICKER (SPEED GAME)** ⚡\n👑 **Hosted by:** " + hostUser.toString() + "\n🎁 **Each winner gets:** **" + prize + "**\n\n🚨 The very **FIRST** person to click the green button wins!";
-    }
+    let description = "⏳ **Ends:** <t:" + endTimeStamp + ":R>\n👑 **Hosted by:** " + hostUser.toString() + "\n👥 **Entries:** **0**\n🏆 **Winners:** **" + winnerCount + "**\n🎁 **Prize:** **" + prize + "**";
+    if (mode === 'clicker') description = "⚡ **CLICKER SPEED GAME** ⚡\n👑 **Hosted by:** " + hostUser.toString() + "\n🎁 **Prize:** **" + prize + "**\n\n🚨 FIRST click wins!";
 
     const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor('#F1C40F').setTimestamp();
-    const enterButton = new ButtonBuilder().setCustomId('enter_giveaway').setLabel(mode === 'clicker' ? 'CLICK ME TO WIN! 🔒⚡' : 'Join the Giveaway! 🎉').setStyle(mode === 'clicker' ? ButtonStyle.Success : ButtonStyle.Primary);
-    const row = new ActionRowBuilder().addComponents(enterButton);
-    const msg = await channel.send({ embeds: [embed], components: [row] });
+    const btn = new ButtonBuilder().setCustomId('enter_giveaway').setLabel(mode === 'clicker' ? 'CLICK ME NOW! ⚡' : 'Join! 🎉').setStyle(ButtonStyle.Primary);
+    const msg = await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
 
-    giveawaysDatabase[msg.id] = {
-        channelId: channel.id,
-        endTime: endTime,
-        prize: prize,
-        winnerCount: winnerCount,
-        mode: mode,
-        title: title,
-        hostUser: hostUser.toString(),
-        participants: []
-    };
+    giveawaysDatabase[msg.id] = { channelId: channel.id, endTime: endTime, prize: prize, winnerCount: winnerCount, mode: mode, title: title, hostUser: hostUser.toString(), participants: [] };
     saveDatabase();
-
     resumeGiveawayCollector(channel, msg.id, durationMs);
 }
 // ==========================================
-// PARTIE 6.2 : COLLECTEURS, SYSTEME DE DÉSINSCRIPTION ET FIN DE LA SÉLECTION
+// PARTIE 7.2 : MISE À JOUR LIVE DES EMBEDS ET CALCUL DES GAGNANTS SANS ERREUR
 // ==========================================
 
 function resumeGiveawayCollector(channel, msgId, durationMs) {
-    const collector = channel.createMessageComponentCollector({ 
-        filter: i => i.message.id === msgId,
-        time: durationMs 
-    });
+    const collector = channel.createMessageComponentCollector({ filter: i => i.message.id === msgId, time: durationMs });
 
     collector.on('collect', async (btnInt) => {
-        const gw = giveawaysDatabase[msgId];
-        if (!gw) return;
+        const gw = giveawaysDatabase[msgId]; if (!gw) return;
 
         if (btnInt.customId === 'enter_giveaway') {
-            if (blacklistDatabase.has(btnInt.user.id)) {
-                return btnInt.reply({ content: "❌ **Entry Denied.** You have been blacklisted.", ephemeral: true });
+            // SÉCURITÉ CORRECTIVE : Le Staff est purement bloqué au clic du bouton de participation
+            if (btnInt.member.permissions.has(PermissionFlagsBits.ModerateMembers) || btnInt.member.roles.cache.has(SECURE_STAFF_ROLE_ID)) {
+                return btnInt.reply({ content: "❌ **Access Denied.** Staff members are strictly barred from joining giveaways.", ephemeral: true });
             }
+            if (blacklistDatabase.has(btnInt.user.id)) return btnInt.reply({ content: "❌ Blacklisted.", ephemeral: true });
 
             if (gw.mode === 'clicker') {
                 gw.participants.push(btnInt.user.id);
-                initStats(btnInt.user.id);
-                statsDatabase[btnInt.user.id].entered += 1;
-                saveDatabase();
-                await btnInt.reply({ content: " 🧇 CRITICAL CLICK! Checking if you were the fastest...", ephemeral: true });
+                initStats(btnInt.user.id); statsDatabase[btnInt.user.id].entered += 1; saveDatabase();
+                await btnInt.reply({ content: "🧇 Speed click recorded!", ephemeral: true });
                 collector.stop();
             } else {
                 if (gw.participants.includes(btnInt.user.id)) {
-                    const leaveButton = new ButtonBuilder().setCustomId("leave_gw_" + btnInt.user.id).setLabel('🚨 LEAVE THIS GIVEAWAY RIGHT NOW 🚨').setStyle(ButtonStyle.Danger);
-                    return btnInt.reply({ content: "⚠️ You are already participating!", components: [new ActionRowBuilder().addComponents(leaveButton)], ephemeral: true });
+                    return btnInt.reply({ content: "⚠️ Already registered.", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("leave_gw_" + btnInt.user.id).setLabel('Leave 🚨').setStyle(ButtonStyle.Danger))], ephemeral: true });
                 }
                 gw.participants.push(btnInt.user.id);
-                initStats(btnInt.user.id);
-                statsDatabase[btnInt.user.id].entered += 1;
-                saveDatabase();
+                initStats(btnInt.user.id); statsDatabase[btnInt.user.id].entered += 1; saveDatabase();
 
-                const endTimeStamp = Math.floor(gw.endTime / 1000);
-                let upDescription = "⏳ **Ends:** <t:" + endTimeStamp + ":R> (<t:" + endTimeStamp + ":F>)\n👑 **Hosted by:** " + gw.hostUser + "\n👥 **Entries:** **" + gw.participants.length + "**\n🏆 **Winners:** **" + gw.winnerCount + "**\n🎁 **Each winner gets:** **" + gw.prize + "**";
-                const upEmbed = new EmbedBuilder().setTitle(gw.title).setDescription(upDescription).setColor('#F1C40F').setTimestamp();
-                
+                const upEmbed = new EmbedBuilder().setTitle(gw.title).setColor('#F1C40F').setTimestamp()
+                    .setDescription("⏳ **Ends:** <t:" + Math.floor(gw.endTime / 1000) + ":R>\n👑 **Hosted by:** " + gw.hostUser + "\n👥 **Entries:** **" + gw.participants.length + "**\n🏆 **Winners:** **" + gw.winnerCount + "**\n🎁 **Prize:** **" + gw.prize + "**");
                 await btnInt.update({ embeds: [upEmbed] });
-                await btnInt.followUp({ content: "✅ Successfully entered the giveaway!", ephemeral: true });
             }
         }
-        
         handleLeaveActionCollector(btnInt, channel, msgId);
     });
-
-    collector.on('end', () => {
-        runGiveawayEnd(channel, msgId);
-    });
+    collector.on('end', () => { runGiveawayEnd(channel, msgId); });
 }
 
 async function handleLeaveActionCollector(btnInt, channel, msgId) {
     if (btnInt.customId.startsWith('leave_gw_')) {
-        const allowedUserId = btnInt.customId.replace('leave_gw_', '');
-        if (btnInt.user.id !== allowedUserId) return btnInt.reply({ content: "❌ This button isn't for you.", ephemeral: true });
-        
-        const gw = giveawaysDatabase[msgId];
-        const index = gw.participants.indexOf(btnInt.user.id);
-        if (index > -1) {
-            gw.participants.splice(index, 1);
-            if (statsDatabase[btnInt.user.id] && statsDatabase[btnInt.user.id].entered > 0) {
-                statsDatabase[btnInt.user.id].entered -= 1;
-            }
-
-            const endTimeStamp = Math.floor(gw.endTime / 1000);
-            let upDescription = "⏳ **Ends:** <t:" + endTimeStamp + ":R> (<t:" + endTimeStamp + ":F>)\n👑 **Hosted by:** " + gw.hostUser + "\n👥 **Entries:** **" + gw.participants.length + "**\n🏆 **Winners:** **" + gw.winnerCount + "**\n🎁 **Each winner gets:** **" + gw.prize + "**";
-            const upEmbed = new EmbedBuilder().setTitle(gw.title).setDescription(upDescription).setColor('#F1C40F').setTimestamp();
-            
-            const originalMsg = await channel.messages.fetch(msgId).catch(() => null);
-            if (originalMsg) await originalMsg.edit({ embeds: [upEmbed] });
-            
-            await btnInt.update({ content: "👋 You have successfully left this giveaway.", components: [] });
-            saveDatabase();
-        } else { 
-            await btnInt.reply({ content: "❌ You are no longer in this giveaway.", ephemeral: true }); 
+        if (btnInt.user.id !== btnInt.customId.replace('leave_gw_', '')) return btnInt.reply({ content: "❌ Not your button.", ephemeral: true });
+        const gw = giveawaysDatabase[msgId]; const idx = gw.participants.indexOf(btnInt.user.id);
+        if (idx > -1) {
+            gw.participants.splice(idx, 1);
+            if (statsDatabase[btnInt.user.id] && statsDatabase[btnInt.user.id].entered > 0) statsDatabase[btnInt.user.id].entered -= 1;
+            await btnInt.update({ content: "👋 Successfully left.", components: [] }); saveDatabase();
         }
     }
 }
 
 async function runGiveawayEnd(channel, msgId) {
-    const gw = giveawaysDatabase[msgId];
-    if (!gw) return;
+    const gw = giveawaysDatabase[msgId]; if (!gw) return;
+    delete giveawaysDatabase[msgId]; saveDatabase();
 
     const endMsg = await channel.messages.fetch(msgId).catch(() => null);
-    const disButton = new ButtonBuilder().setCustomId('ended').setDisabled(true).setLabel(gw.mode === 'clicker' ? 'Waffle Clicked! 🔒' : 'Giveaway Closed 🔒').setStyle(ButtonStyle.Secondary);
-    
-    if (endMsg) await endMsg.edit({ components: [new ActionRowBuilder().addComponents(disButton)] }).catch(() => null);
+    if (endMsg) await endMsg.edit({ components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ended').setDisabled(true).setLabel('Closed 🔒').setStyle(ButtonStyle.Secondary))] }).catch(() => null);
 
     if (gw.participants.length === 0) {
-        const finalEmbed = new EmbedBuilder().setTitle(gw.title).setDescription("❌ **Giveaway Ended:** No one joined.\n👑 **Hosted by:** " + gw.hostUser + "\n🎁 **Each winner gets:** **" + gw.prize + "**").setColor('#E74C3C');
-        if (endMsg) await endMsg.edit({ embeds: [finalEmbed] });
-        delete giveawaysDatabase[msgId]; saveDatabase(); return;
+        if (endMsg) await endMsg.edit({ embeds: [new EmbedBuilder().setTitle(gw.title).setDescription("❌ Ended: No participants.").setColor('#E74C3C')] });
+        return;
     }
 
     const rawPrizeB64 = Buffer.from(gw.prize).toString('base64');
-    const rawHostB64 = Buffer.from("" + gw.hostUser).toString('base64');
+    const rawHostB64 = Buffer.from(gw.hostUser).toString('base64');
 
     if (gw.mode === 'clicker') {
-        const winnerId = gw.participants[0];
-        initStats(winnerId); statsDatabase[winnerId].won += 1; saveDatabase();
-
-        const secureClaimBtn = new ButtonBuilder().setCustomId("claim_gw_" + winnerId + "_" + rawPrizeB64 + "_" + rawHostB64).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
-        const finalEmbed = new EmbedBuilder().setTitle(gw.title).setDescription("⚡ **CLICKER OVER!**\n👑 **Fastest Clicker:** <@" + winnerId + ">\n🎁 **Each winner gets:** **" + gw.prize + "**").setColor('#2ECC71');
-        
-        if (endMsg) await endMsg.edit({ embeds: [finalEmbed] });
-        await channel.send({
-            content: "⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@" + winnerId + ">, you reacted the fastest and won **" + gw.prize + "**! 🎉🏆\nClick the button below to claim your prize!",
-            components: [new ActionRowBuilder().addComponents(secureClaimBtn)]
-        });
-        delete giveawaysDatabase[msgId]; saveDatabase(); return;
+        const wId = gw.participants[0]; initStats(wId); statsDatabase[wId].won += 1; saveDatabase();
+        const claim = new ButtonBuilder().setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
+        if (endMsg) await endMsg.edit({ embeds: [new EmbedBuilder().setTitle(gw.title).setDescription("⚡ Winner: <@" + wId + ">\n🎁 Prize: " + gw.prize).setColor('#2ECC71')] });
+        await channel.send({ content: "⚡ 🧇 **CLICKER WINNER!** Congratulations <@" + wId + ">!", components: [new ActionRowBuilder().addComponents(claim)] });
+        return;
     }
 
-    const cacheMembers = await channel.guild.members.fetch();
-    const validParticipants = gw.participants.filter(id => {
-        const memberObj = cacheMembers.get(id); if (!memberObj) return false;
-        return !memberObj.user.bot && !blacklistDatabase.has(id) && !memberObj.permissions.has(PermissionFlagsBits.ModerateMembers);
-    });
+    // Le staff ayant été filtré en amont au clic du bouton, tous les inscrits sont d'office réguliers et valides
+    const winners = gw.participants.sort(() => 0.5 - Math.random()).slice(0, gw.winnerCount);
+    const mentions = winners.map(id => "<@" + id + ">").join(', ');
 
-    if ((gw.mode === 'sos' || gw.mode === 'rps') && validParticipants.length === 1) { 
-        validParticipants.push(validParticipants[0]); 
-    }
-    
-    if (validParticipants.length < gw.winnerCount) {
-        const finalEmbed = new EmbedBuilder().setTitle(gw.title).setDescription("❌ **Giveaway Ended:** Not enough eligible regular participants.\n👑 **Hosted by:** " + gw.hostUser).setColor('#E74C3C');
-        if (endMsg) await endMsg.edit({ embeds: [finalEmbed] });
-        delete giveawaysDatabase[msgId]; saveDatabase(); return;
-    }
-
-    const winners = validParticipants.sort(() => 0.5 - Math.random()).slice(0, gw.winnerCount);
-    const winnersMention = winners.map(id => "<@" + id + ">").join(', ');
-
-    const finalEmbed = new EmbedBuilder().setTitle(gw.title).setDescription("🎉 **GIVEAWAY ENDED!**\n👑 **Winner(s):** " + winnersMention + "\n👑 **Hosted by:** " + gw.hostUser + "\n🎁 **Each winner gets:** **" + gw.prize + "**").setColor('#2ECC71');
-    if (endMsg) await endMsg.edit({ embeds: [finalEmbed] });
+    if (endMsg) await endMsg.edit({ embeds: [new EmbedBuilder().setTitle(gw.title).setDescription("🎉 Winners: " + mentions + "\n🎁 Prize: " + gw.prize).setColor('#2ECC71')] });
 
     if (gw.mode === 'normal') {
-        winners.forEach(wId => { initStats(wId); statsDatabase[wId].won += 1; }); saveDatabase();
-        const primaryWinnerId = winners[0];
-        const secureClaimBtn = new ButtonBuilder().setCustomId("claim_gw_" + primaryWinnerId + "_" + rawPrizeB64 + "_" + rawHostB64).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
-
-        await channel.send({
-            content: "🎉 🧇 **CONGRATULATIONS** " + winnersMention + "! You won **" + gw.prize + "**! 🎁✨\nClick the button below to open your ticket!",
-            components: [new ActionRowBuilder().addComponents(secureClaimBtn)]
-        });
+        winners.forEach(id => { initStats(id); statsDatabase[id].won += 1; }); saveDatabase();
+        const claim = new ButtonBuilder().setCustomId("claim_gw_" + winners[0] + "_" + rawPrizeB64 + "_" + rawHostB64).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
+        await channel.send({ content: "🎉 **CONGRATULATIONS** " + mentions + "! You won **" + gw.prize + "**!", components: [new ActionRowBuilder().addComponents(claim)] });
     }
-
     handleMiniGamesArbitration(channel, winners, gw.prize, gw.winnerCount, gw.mode, gw.hostUser, rawPrizeB64, rawHostB64);
-    delete giveawaysDatabase[msgId]; saveDatabase();
 }
 // ==========================================
-// PARTIE 6.3 : ARBITRAGE DES MINI-JEUX COMPLEXES ET CONNEXION FINALISÉE (CORRIGÉ)
+// PARTIE 7.3 : CALCULATEUR DES MODES DUELS (DOK, SOS, RPS) ET CONNEXION FINALE
 // ==========================================
 
 async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, mode, originHost, rawPrizeB64, rawHostB64) {
     if (mode === 'clicker' || mode === 'normal') return;
     const claimBtn = new ButtonBuilder().setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
-    const claimRow = new ActionRowBuilder().addComponents(claimBtn);
 
     if (mode === 'dok') {
-        const wId = winners[0]; // CORRIGÉ : Index [0] ajouté
-        const gameMsg = await channel.send({ content: "📢 <@" + wId + ">, choose your destiny! **Double** or **Keep**? 🧇", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dok_double').setLabel('Double 🟢').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('dok_keep').setLabel('Keep 🔴').setStyle(ButtonStyle.Danger))] });
+        const wId = winners[0]; 
+        const gameMsg = await channel.send({ content: "📢 <@" + wId + ">, choose: **Double** or **Keep**? 🧇", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dok_double').setLabel('Double 🟢').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('dok_keep').setLabel('Keep 🔴').setStyle(ButtonStyle.Danger))] });
         const gameColl = gameMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
         
         gameColl.on('collect', async (gInt) => {
-            if (gInt.user.id !== wId) return gInt.reply({ content: "❌ Only the winner can choose!", ephemeral: true });
-            gameColl.stop(); 
-            await gameMsg.edit({ components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dok_double').setLabel('Double 🟢').setStyle(ButtonStyle.Success).setDisabled(true), new ButtonBuilder().setCustomId('dok_keep').setLabel('Keep 🔴').setStyle(ButtonStyle.Danger).setDisabled(true))] });
-            
+            if (gInt.user.id !== wId) return gInt.reply({ content: "❌ Winner only.", ephemeral: true });
+            gameColl.stop();
             if (gInt.customId === 'dok_keep') {
                 initStats(wId); statsDatabase[wId].won += 1; saveDatabase();
-                await gInt.reply({ content: "🔒 **KEEP!** You kept **" + prize + "**! GG! 🧇🎁", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64))] });
+                await gInt.reply({ content: "🔒 kept **" + prize + "**!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64))] });
             } else {
-                let newPrize = prize; const match = prize.match(/\d+/);
-                if (match) { const oldN = parseInt(match[0], 10); newPrize = prize.replace(oldN, oldN * 2); } else { newPrize = "2x " + prize; }
-                await gInt.reply("🟢 **DOUBLE ACTIVATED!** New reward: **" + newPrize + "**! Re-rolling in 5s... 🚀");
-                setTimeout(() => startGiveawayEngine(channel, 15000, newPrize, winnerCount, 'dok', "DOUBLE OR KEEP", gInt.user), 5000);
+                let nPrize = prize; const match = prize.match(/\d+/);
+                if (match) { const oldN = parseInt(match[0], 10); nPrize = prize.replace(oldN, oldN * 2); } else { nPrize = "2x " + prize; }
+                await gInt.reply("🟢 **DOUBLE!** New reward: **" + nPrize + "**! Re-rolling in 5s...");
+                setTimeout(() => startGiveawayEngine(channel, 15000, nPrize, winnerCount, 'dok', "DOUBLE OR KEEP", gInt.user), 5000);
             }
         });
     }
-    
-    handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn, claimRow);
+    handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn);
 }
 
-async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn, claimRow) {
+async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn) {
     if (mode === 'sos' && winners.length >= 2) {
-        const p1 = winners[0]; // CORRIGÉ : Index [0] ajouté
-        const p2 = winners[1]; // CORRIGÉ : Index [1] ajouté
-        const sosMsg = await channel.send({ content: "⚔️ <@" + p1 + "> and <@" + p2 + ">! Choose **Split** 🟢 or **Steal** 🔴!", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('sos_split').setLabel('Split 🟢').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('sos_steal').setLabel('Steal 🔴').setStyle(ButtonStyle.Danger))] });
+        const p1 = winners[0]; const p2 = winners[1];
+        const sosMsg = await channel.send({ content: "⚔️ <@" + p1 + "> vs <@" + p2 + ">! **Split** 🟢 or **Steal** 🔴!", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('sos_split').setLabel('Split').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('sos_steal').setLabel('Steal').setStyle(ButtonStyle.Danger))] });
         const choices = {}; const sosColl = sosMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
-        
+
         sosColl.on('collect', async (sInt) => {
-            if (sInt.user.id !== p1 && sInt.user.id !== p2) return sInt.reply({ content: "❌ You are not a winner!", ephemeral: true });
-            if (choices[sInt.user.id]) return sInt.reply({ content: "⚠️ Choice already made!", ephemeral: true });
-            choices[sInt.user.id] = sInt.customId.replace('sos_', ''); await sInt.reply({ content: "✅ Registered!", ephemeral: true });
-            
+            if (sInt.user.id !== p1 && sInt.user.id !== p2) return sInt.reply({ content: "❌ Not a winner.", ephemeral: true });
+            if (choices[sInt.user.id]) return sInt.reply({ content: "⚠️ Locked.", ephemeral: true });
+            choices[sInt.user.id] = sInt.customId.replace('sos_', ''); await sInt.reply({ content: "✅ Logged.", ephemeral: true });
+
             if (choices[p1] && choices[p2]) {
-                sosColl.stop(); await sosMsg.edit({ components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('sos_split').setDisabled(true).setLabel('Split').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('sos_steal').setDisabled(true).setLabel('Steal').setStyle(ButtonStyle.Secondary))] });
+                sosColl.stop();
                 if (choices[p1] === 'split' && choices[p2] === 'split') {
                     initStats(p1); statsDatabase[p1].won += 1; initStats(p2); statsDatabase[p2].won += 1;
-                    await channel.send({ content: "🤝 **SPLIT!** Both shared: **" + prize + "**! 🎉", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + p1 + "_" + rawPrizeB64 + "_" + rawHostB64))] });
-                } else if (choices[p1] === 'steal' && choices[p2] === 'steal') { await channel.send("💀 **BOTH STOLE!** No one wins anything. ❌"); }
-                else { const thief = choices[p1] === 'steal' ? p1 : p2; initStats(thief); statsDatabase[thief].won += 1; await channel.send({ content: "😈 **BETRAYAL!** <@" + thief + "> stole everything and wins **" + prize + "**! 🏆", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + thief + "_" + rawPrizeB64 + "_" + rawHostB64))] }); }
+                    await channel.send({ content: "🤝 **SPLIT!** Shared: " + prize, components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + p1 + "_" + rawPrizeB64 + "_" + rawHostB64))] });
+                } else if (choices[p1] === 'steal' && choices[p2] === 'steal') { await channel.send("💀 **BOTH STOLE!** No winners."); }
+                else { const thief = choices[p1] === 'steal' ? p1 : p2; initStats(thief); statsDatabase[thief].won += 1; await channel.send({ content: "😈 **BETRAYAL!** <@" + thief + "> won everything!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + thief + "_" + rawPrizeB64 + "_" + rawHostB64))] }); }
                 saveDatabase();
             }
         });
     }
 
     if (mode === 'rps' && winners.length >= 2) {
-        const p1 = winners[0]; // CORRIGÉ : Index [0] ajouté
-        const p2 = winners[1]; // CORRIGÉ : Index [1] ajouté
-        const rpsMsg = await channel.send({ content: "🪨📄✂️ <@" + p1 + "> vs <@" + p2 + ">! Make your choice:", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rps_rock').setLabel('🪨 Rock').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rps_paper').setLabel('📄 Paper').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('rps_scissors').setLabel('✂️ Scissors').setStyle(ButtonStyle.Danger))] });
+        const p1 = winners[0]; const p2 = winners[1];
+        const rpsMsg = await channel.send({ content: "🪨📄✂️ <@" + p1 + "> vs <@" + p2 + ">! Battle:", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rps_rock').setLabel('🪨 Rock').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rps_paper').setLabel('📄 Paper').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('rps_scissors').setLabel('✂️ Scissors').setStyle(ButtonStyle.Danger))] });
         const rpsChoices = {}; const rpsColl = rpsMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 45000 });
-        
+
         rpsColl.on('collect', async (rInt) => {
-            if (rInt.user.id !== p1 && rInt.user.id !== p2) return rInt.reply({ content: "❌ You are not in this battle!", ephemeral: true });
-            if (rpsChoices[rInt.user.id]) return rInt.reply({ content: "⚠️ Locked!", ephemeral: true });
-            rpsChoices[rInt.user.id] = rInt.customId.replace('rps_', ''); await rInt.reply({ content: "🔮 Choice locked!", ephemeral: true });
-            
+            if (rInt.user.id !== p1 && rInt.user.id !== p2) return rInt.reply({ content: "❌ Battle locked.", ephemeral: true });
+            if (rpsChoices[rInt.user.id]) return rInt.reply({ content: "⚠️ Locked.", ephemeral: true });
+            rpsChoices[rInt.user.id] = rInt.customId.replace('rps_', ''); await rInt.reply({ content: "🔮 Choice locked.", ephemeral: true });
+
             if (rpsChoices[p1] && rpsChoices[p2]) {
-                rpsColl.stop(); await rpsMsg.edit({ components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('rps_rock').setDisabled(true).setLabel('Rock').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rps_paper').setDisabled(true).setLabel('Paper').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('rps_scissors').setDisabled(true).setLabel('Scissors').setStyle(ButtonStyle.Secondary))] });
+                rpsColl.stop();
                 const c1 = rpsChoices[p1]; const c2 = rpsChoices[p2];
-                if (c1 === c2) { await channel.send("🤝 **DRAW!** Both chose **" + c1 + "**. Tie battle! 🧇"); }
-                else if ((c1 === 'rock' && c2 === 'scissors') || (c1 === 'paper' && c2 === 'rock') || (c1 === 'scissors' && c2 === 'paper')) { initStats(p1); statsDatabase[p1].won += 1; await channel.send({ content: "👑 **VICTORY!** <@" + p1 + "> wins **" + prize + "**! ✨", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + p1 + "_" + rawPrizeB64 + "_" + rawHostB64))] }); }
-                else { initStats(p2); statsDatabase[p2].won += 1; await channel.send({ content: "👑 **VICTORY!** <@" + p2 + "> wins **" + prize + "**! ✨", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + p2 + "_" + rawPrizeB64 + "_" + rawHostB64))] }); }
+                if (c1 === c2) { await channel.send("🤝 **DRAW!** Re-roll battle manually."); }
+                else if ((c1 === 'rock' && c2 === 'scissors') || (c1 === 'paper' && c2 === 'rock') || (c1 === 'scissors' && c2 === 'paper')) { initStats(p1); statsDatabase[p1].won += 1; await channel.send({ content: "👑 **VICTORY!** <@" + p1 + "> won!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + p1 + "_" + rawPrizeB64 + "_" + rawHostB64))] }); }
+                else { initStats(p2); statsDatabase[p2].won += 1; await channel.send({ content: "👑 **VICTORY!** <@" + p2 + "> won!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + p2 + "_" + rawPrizeB64 + "_" + rawHostB64))] }); }
                 saveDatabase();
             }
         });
     }
 }
 
-// Lancement global sécurisé du client Discord
-client.login(process.env.DISCORD_TOKEN).catch((err) => {
-    console.error('❌ Discord client connection failure:', err);
-    process.exit(1);
-});
+async function processTicketClosure(interaction) {
+    const channel = interaction.channel; if (!channel) return;
+    await interaction.reply({ content: '🔒 **Ticket Scheduled for Deletion.** Purging in 10 seconds...' });
+    setTimeout(async () => { await channel.delete().catch(() => null); }, 10000);
+}
+
+// Lancement final sécurisé du client Discord
+if (!process.env.DISCORD_TOKEN) { console.error('❌ Missing DISCORD_TOKEN.'); process.exit(1); }
+client.login(process.env.DISCORD_TOKEN).catch(e => console.error(e));
