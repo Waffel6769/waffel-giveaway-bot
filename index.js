@@ -554,7 +554,8 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
 
         const menu = new StringSelectMenuBuilder().setCustomId('select_ticket_topic').setPlaceholder('Select a topic to open a ticket...')
             .addOptions(
-                new StringSelectMenuOptionBuilder().setLabel('Giveaway Claim').setValue('claim').setDescription('Open a channel to claim your reward').setEmoji('🎉'),                new StringSelectMenuOptionBuilder().setLabel('Support').setValue('support').setDescription('General inquiries and assistance').setEmoji('📩')
+                new StringSelectMenuOptionBuilder().setLabel('Giveaway Claim').setValue('claim').setDescription('Open a channel to claim your reward').setEmoji('🎉'),                new StringSelectMenuOptionBuilder().setLabel('Buy/Sell Spawners').setValue('skelly').setDescription('Trade spawners with staff management').setEmoji('💀'),
+                new StringSelectMenuOptionBuilder().setLabel('Support').setValue('support').setDescription('General inquiries and assistance').setEmoji('📩')
             );
 
         const embed = new EmbedBuilder()
@@ -663,7 +664,7 @@ async function handleComponentInteractions(interaction) {
             const q1 = new TextInputBuilder().setCustomId('claim_q1').setLabel("What's your Minecraft username?").setStyle(TextInputStyle.Short).setRequired(true);
             const q2 = new TextInputBuilder().setCustomId('claim_q2').setLabel("How Much Did You Win?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 15m").setRequired(true);
             const q3 = new TextInputBuilder().setCustomId('claim_q3').setLabel("Who hosted the giveaway?").setStyle(TextInputStyle.Short).setRequired(true);
-            const q4 = new TextInputBuilder().setCustomId('claim_q4').setLabel("Send proof that you won").setStyle(TextInputStyle.Paragraph).setPlaceholder("Paste a link to your screenshot/proof here").setRequired(true);
+            const q4 = new TextInputBuilder().setCustomId('claim_q4').setLabel("Type OK").setStyle(TextInputStyle.Short).setPlaceholder("Please send your proof in the ticket.").setRequired(true);
 
             modal.addComponents(new ActionRowBuilder().addComponents(q1), new ActionRowBuilder().addComponents(q2), new ActionRowBuilder().addComponents(q3), new ActionRowBuilder().addComponents(q4));
             return interaction.showModal(modal);
@@ -715,7 +716,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
                 { name: "What's your Minecraft username?", value: interaction.fields.getTextInputValue('claim_q1'), inline: false },
                 { name: "How Much Did You Win?", value: interaction.fields.getTextInputValue('claim_q2'), inline: false },
                 { name: "Who hosted the giveaway?", value: interaction.fields.getTextInputValue('claim_q3'), inline: false },
-                { name: "Send proof that you won", value: interaction.fields.getTextInputValue('claim_q4'), inline: false }
+                { name: "Confirmation", value: interaction.fields.getTextInputValue('claim_q4'), inline: false }
             ];
         } 
         else if (topic === 'skelly') {
@@ -828,7 +829,7 @@ async function handleOriginalGiveawayLogicProcessing(interaction) {
             await channel.send({ content: `🔔 <@&${ROLE_TICKET_TEAM}> | Giveaway claim from ${interaction.user}`, embeds: [embed], components: [closeRow] });
             return interaction.editReply({ content: `✅ Claim ticket created: ${channel}` });
         } catch (error) {
-            console.error('Could not create the claim ticket:', error);
+            console.error('Could not create giveaway claim ticket:', error);
             return interaction.editReply({ content: '❌ Could not create the claim ticket. Check the ticket category and bot permissions.' });
         }
     }
