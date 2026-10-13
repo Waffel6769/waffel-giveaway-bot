@@ -960,9 +960,23 @@ async function runGiveawayEnd(channel, msgId) {
     if (endMsg) await endMsg.edit({ embeds: [new EmbedBuilder().setTitle(gw.title).setDescription("🎉 GIVEAWAY ENDED!\n👑 Winner(s): " + mentions + "\n👑 Hosted by: " + gw.hostUser + "\n🎁 Each winner gets: " + gw.prize).setColor('#2ECC71')] });
 
     if (gw.mode === 'normal') {
-        winners.forEach(id => { initStats(id); statsDatabase[id].won += 1; }); saveDatabase();
-        const claim = new ButtonBuilder().setCustomId("claim_gw_" + winners[0] + "_" + rawPrizeB64 + "_" + rawHostB64).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
-        await channel.send({ content: "🎉 **CONGRATULATIONS** " + mentions + "! You won **" + gw.prize + "**!", components: [new ActionRowBuilder().addComponents(claim)] });
+        winners.forEach(id => {
+            initStats(id);
+            statsDatabase[id].won += 1;
+        });
+        saveDatabase();
+
+        for (const winnerId of winners) {
+            const claim = new ButtonBuilder()
+                .setCustomId("claim_gw_" + winnerId + "_" + rawPrizeB64 + "_" + rawHostB64)
+                .setLabel('Claim 🟢')
+                .setStyle(ButtonStyle.Success);
+
+            await channel.send({
+                content: "🎉 **CONGRATULATIONS** <@" + winnerId + ">! You won **" + gw.prize + "**!",
+                components: [new ActionRowBuilder().addComponents(claim)]
+            });
+        }
     }
     handleMiniGamesArbitration(channel, winners, gw.prize, gw.winnerCount, gw.mode, gw.hostUser, rawPrizeB64, rawHostB64);
 }
