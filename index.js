@@ -277,284 +277,286 @@ async function handleCoreModCommands(message, command, args) {
         if (!manageMessagesPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Permission denied.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         const amount = parseInt(args[0], 10);
         if (isNaN(amount) || amount < 1 || amount > 100) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "⚠️ Please provide a number between 1 and 100.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        await message.channel.bulkDelete(amount + 1, true).catch(() => null);        const logEmbed = createPrefixEmbed('Bulk Clear Operation Executed', 'Message cleanup loop complete.', [
-            { name: '🗑️ Cleared Count', value: amount + ' Messages', inline: true },
-            { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
-        ]);
-        return message.channel.send({ embeds: [logEmbed] }).then(m => setTimeout(() => m.delete().catch(() => null), 4000));
-    }
+        await message.channel.bulkDelete(amount + 1, true).catch(() => null);require('dotenv').config();
 
-    if (command === 'roleadd') {
-        setTimeout(() => message.delete().catch(() => null), 200);
-        if (!manageRolesPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ You don't have permission to manage roles.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        const target = message.mentions.members.first();
-        const role = message.mentions.roles.first();
-        if (!target || !role) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "⚠️ Usage: `?roleadd @member @role`")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        try { 
-            await target.roles.add(role); 
-            const logEmbed = createPrefixEmbed('Role Assignment Successful', 'Role applied securely to the targeted member.', [
-                { name: '👤 Target Member', value: target.toString(), inline: true },
-                { name: '📌 Assigned Badge', value: role.toString(), inline: true },
-                { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
-            ]);
-            return message.channel.send({ embeds: [logEmbed] });
-        } catch (e) { 
-            return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Unable to add role. Check role hierarchy.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000)); 
-        }
-    }
-    
-    handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm);
+const {
+  Client,
+  GatewayIntentBits,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
+  ChannelType,
+  PermissionFlagsBits,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} = require('discord.js');
+
+const express = require('express');
+const fs = require('fs');
+
+const DATA_FILE = './database.json';
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Configurations globales et identifiants de sécurité
+const SECURE_CATEGORY_ID = process.env.TICKET_CATEGORY_ID || "1443450226647240796"; 
+const SECURE_STAFF_ROLE_ID = process.env.SECURE_STAFF_ROLE_ID || "1423749610395930707";   
+const ROLE_TICKET_TEAM = "1497812876046499870";
+const ROLE_SKELLY = "1497989066900373504";
+const GUILD_ID = process.env.GUILD_ID || null;
+
+let warnDatabase = {};
+let blacklistDatabase = new Set();
+let statsDatabase = {};
+let giveawaysDatabase = {}; 
+let ticketPanelsDatabase = {};
+const ticketData = new Map();
+// 💾 CHARGEMENT DE LA BASE DE DONNÉES JSON
+try {
+  if (fs.existsSync(DATA_FILE)) {
+    const rawData = fs.readFileSync(DATA_FILE, 'utf8');
+    const parsed = JSON.parse(rawData);
+    warnDatabase = parsed.warns || {};
+    statsDatabase = parsed.stats || {};
+    giveawaysDatabase = parsed.giveaways || {};
+    ticketPanelsDatabase = parsed.ticketPanels || {};
+    blacklistDatabase = new Set(parsed.blacklist || []);
+    console.log("💾 Base de données chargée avec succès depuis database.json");
+  }
+} catch (error) {
+  console.error("❌ Échec du chargement de la base de données :", error);
 }
-// ==========================================
-// PARTIE 7 : HISTORIQUES DES STRIKES ET PROTECTION UNWARN (SR. MOD +)
-// ==========================================
 
-async function handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm) {
-    if (command === 'unwarn') {
-        setTimeout(() => message.delete().catch(() => null), 200);
-        if (!banPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Command locked to **Sr. Mod +** permissions.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!target) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Please mention a valid user or provide their ID.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        if (!warnDatabase[target.id] || warnDatabase[target.id].length === 0) { 
-            return message.channel.send({ embeds: [createPrefixEmbed('Action Aborted', "✅ This member has no active warnings to remove.")] }); 
-        }
-        warnDatabase[target.id].pop();
-        saveDatabase();
-        
-        const logEmbed = createPrefixEmbed('Infraction Warnings Reset', 'Cleared internal history violations for target profile.', [
-            { name: '👤 Target Member', value: target.toString(), inline: true },
-            { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
-        ]);
-        return message.channel.send({ embeds: [logEmbed] });
-    }
-
-    if (command === 'warn') {
-        setTimeout(() => message.delete().catch(() => null), 200);
-        if (!moderateMembersPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Permission denied.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!target) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "❌ Usage: `?warn @member [reason]`")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        
-        const reason = args.slice(1).join(' ') || "No reason provided";
-        if (!warnDatabase[target.id]) warnDatabase[target.id] = [];
-        
-        warnDatabase[target.id].push({
-            reason: reason,
-            moderator: message.author.tag,
-            date: new Date().toLocaleDateString('fr-FR')
-        });
-        saveDatabase();
-
-        const logEmbed = createPrefixEmbed('Member Warned Successfully', 'Violation recorded in database ledger.', [
-            { name: '👤 Target Member', value: target.toString(), inline: true },
-            { name: '📄 Infraction Reason', value: reason, inline: false },
-            { name: '🛡️ Issuing Exec', value: message.author.toString(), inline: true }
-        ]);
-        return message.channel.send({ embeds: [logEmbed] });
-    }
-
-    handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm);
+// 💾 SAUVEGARDE DE LA BASE DE DONNÉES JSON
+function saveDatabase() {
+  try {
+    const dataToSave = {
+      warns: warnDatabase,
+      stats: statsDatabase,
+      giveaways: giveawaysDatabase,
+      ticketPanels: ticketPanelsDatabase,
+      blacklist: Array.from(blacklistDatabase)
+    };
+    fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave, null, 4), 'utf8');
+  } catch (error) {
+    console.error("❌ Erreur d'écriture de la base de données :", error);
+  }
 }
-// ==========================================
-// PARTIE 8 : GESTION DU TIMEOUT STAFF ET LOCK DU BAN (SR. MOD +)
-// ==========================================
 
-async function handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm) {
-    if (command === 'to' || command === 'rto') {
-        setTimeout(() => message.delete().catch(() => null), 200);
-        if (!moderateMembersPerm) {
-            return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Permission denied.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        }
-        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!target) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "❌ Please mention a valid member.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-
-        if (command === 'rto') {
-            try {
-                await target.timeout(null);
-                const logEmbed = createPrefixEmbed('Timeout Removal Completed', 'Voice and text restrictions revoked.', [
-                    { name: '👤 Target Member', value: target.toString(), inline: true },
-                    { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
-                ]);
-                return message.channel.send({ embeds: [logEmbed] });
-            } catch (e) {
-                return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Could not remove timeout.")] });
-            }
-        }
-
-        let timeArg = args[1]; 
-        let durationMs = parseDuration(timeArg);
-        let reason = durationMs ? args.slice(2).join(' ') : args.slice(1).join(' ') || "No reason provided";
-        let finalDuration = durationMs || (60 * 1000);
-        
-        if (finalDuration > 28 * 24 * 60 * 60 * 1000) { 
-            finalDuration = 28 * 24 * 60 * 60 * 1000; 
-            timeArg = "28d (Discord Max)"; 
-        }
-        
-        try {
-            await target.timeout(finalDuration, reason);
-            const logEmbed = createPrefixEmbed('Timeout Execution Completed', 'Action successfully authorized on target parameters.', [
-                { name: '👤 Target Member', value: target.toString(), inline: true },
-                { name: '⏱️ Total Duration', value: (timeArg || '1m'), inline: true },
-                { name: '📄 Stated Reason', value: reason, inline: false },
-                { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
-            ]);
-            return message.channel.send({ embeds: [logEmbed] });
-        } catch (err) {
-            return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Unable to target this user. Verify hierarchical permissions.")] });
-        }
-    }
-
-    if (command === 'ban') {
-        setTimeout(() => message.delete().catch(() => null), 200);
-        if (!banPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Command locked to **Sr. Mod +** permissions.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-        if (!target) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "❌ Usage: `?ban @member [reason]`")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        
-        const reason = args.slice(1).join(' ') || "No reason provided";
-        try {
-            await target.ban({ reason: reason });
-            const logEmbed = createPrefixEmbed('Banishment Sequence Executed', 'Profile permanently terminated from the server.', [
-                { name: '👤 Target Entity', value: target.user.tag, inline: true },
-                { name: '📄 Stated Reason', value: reason, inline: false },
-                { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
-            ]);
-            return message.channel.send({ embeds: [logEmbed] });
-        } catch (e) {
-            return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Failed to ban. Hierarchical restriction.")] });
-        }
-    }
-
-    if (command === 'unban') {
-        setTimeout(() => message.delete().catch(() => null), 200);
-        if (!banPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Command locked to **Sr. Mod +** permissions.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        const targetId = args[0];
-        if (!targetId) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "❌ Usage: `?unban [User_ID]`")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
-        
-        try {
-            await message.guild.members.unban(targetId);
-            const logEmbed = createPrefixEmbed('Banishment Revoked', 'Identity cleared for server re-entry.', [
-                { name: '🆔 Cleared ID', value: targetId, inline: true },
-                { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
-            ]);
-            return message.channel.send({ embeds: [logEmbed] });
-        } catch (e) {
-            return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Invalid User ID or entity not banned.")] });
-        }
-    }
+function initStats(userId) {
+  if (!statsDatabase[userId]) {
+    statsDatabase[userId] = { entered: 0, won: 0 };
+  }
 }
-// ==========================================
-// PARTIE 9 : INTERACTIONCREATE ET FILTRE SÉCURITÉ DE LA COMMANDE RENAME UNIVERSELLE
-// ==========================================
+function parseDuration(str) {
+  if (!str) return null;
+  const match = str.match(/^(\d+)(sec|s|m|h|d)/i);
+  if (!match) return null;
+  const val = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  if (unit === 's' || unit === 'sec') return val * 1000;
+  if (unit === 'm') return val * 60 * 1000;
+  if (unit === 'h') return val * 60 * 60 * 1000;
+  if (unit === 'd') return val * 24 * 60 * 60 * 1000;
+  return null;
+}
 
-client.on('interactionCreate', async (interaction) => {
-    if (interaction.isChatInputCommand() && ['gcreate', 'gend', 'greroll'].includes(interaction.commandName)) {
-        if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-            return interaction.reply({ content: "❌ You must be a **Staff Member** (with Timeout permissions) to manage giveaways.", ephemeral: true });
-        }
-    }
+function ensureTicketChannelName(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80);
+}
 
-    if (interaction.isChatInputCommand() && ['gwblacklist', 'gwunblacklist', 'statsreset', 'ticketpanel'].includes(interaction.commandName)) {
-        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: "❌ This command is strictly restricted to **Server Administrators**.", ephemeral: true });
-        }
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
-        if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-            return interaction.reply({ content: "❌ You don't have Staff permissions to interact with this setup menu.", ephemeral: true });
-        }
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_waffel_')) {
-        if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-            return interaction.reply({ content: "❌ Permission denied. This action is restricted to Staff.", ephemeral: true });
-        }
-    }
-
-    if (interaction.isChatInputCommand()) {
-        const targetUser = interaction.options.getUser('target') || interaction.user;
-
-        // Commande /rename universelle modifiable à l'infini partout sur le serveur
-        if (interaction.commandName === 'rename') {
-            const member = interaction.member;
-            const isStaff = member.roles && member.roles.cache && member.roles.cache.has(SECURE_STAFF_ROLE_ID);
-            const isAdmin = member.permissions && member.permissions.has(PermissionFlagsBits.Administrator);
-
-            if (!isStaff && !isAdmin) {
-                return interaction.reply({ content: '❌ Only authenticated operational staff can perform configuration renames.', ephemeral: true });
-            }
-            
-            const channel = interaction.channel;
-            if (!channel || !channel.isTextBased()) {
-                return interaction.reply({ content: '❌ This command only works in a valid text channel.', ephemeral: true });
-            }
-
-            const newNameRaw = interaction.options.getString('name', true);
-            const newName = ensureTicketChannelName(newNameRaw);
-            if (!newName) {
-                return interaction.reply({ content: '❌ Invalid channel name format.', ephemeral: true });
-            }
-
-            try {
-                await channel.setName(newName);
-                return interaction.reply({ content: `✅ Successfully changed channel identity state to: **${newName}**`, ephemeral: true });
-            } catch (err) {
-                console.error('Failed to rename channel:', err);
-                if (err.code === 50035 || err.message.toLowerCase().includes('rate limit')) {
-                    return interaction.reply({
-                        content: '⚠️ **Discord Rate Limit !** Vous renommez ce salon trop vite. Veuillez patienter 5 à 10 minutes avant de pouvoir changer son nom à nouveau.',
-                        ephemeral: true
-                    });
-                }
-                return interaction.reply({ content: '❌ Failed to rename channel. Verify bot permissions (Manage Channels).', ephemeral: true });
-            }
-        }
-
-        if (interaction.commandName === 'stats') {
-            initStats(targetUser.id);
-            const userStats = statsDatabase[targetUser.id];
-            const winRate = userStats.entered > 0 ? ((userStats.won / userStats.entered) * 100).toFixed(1) : '0.0';
-
-            const statsEmbed = new EmbedBuilder()
-                .setTitle("📊 Giveaway Statistics - " + targetUser.username)
-                .setColor('#F1C40F')
-                .setThumbnail(targetUser.displayAvatarURL())
-                .addFields(
-                    { name: '📥 Giveaways Entered', value: "`" + userStats.entered + "` times", inline: true },
-                    { name: '🏆 Giveaways Won', value: "`" + userStats.won + "` times", inline: true },
-                    { name: '📈 Win Rate Percentage', value: "`" + winRate + "%`" }
-                )
-                .setFooter({ text: "Waffel's Analytical System" })
-                .setTimestamp();
-
-            return interaction.reply({ embeds: [statsEmbed] });
-        }
+function createPrefixEmbed(title, description, fields = []) {
+  const embed = new EmbedBuilder()
+    .setColor(0x2B2D31)
+    .setTitle('⚙️ ' + title)
+    .setDescription(description)
+    .setTimestamp();
         
-        handleUtilitySlashCommands(interaction, targetUser);
-    }
-    
-    handleComponentInteractions(interaction);
+  if (fields.length > 0) {
+    embed.addFields(fields);
+  }
+  return embed;
+}
+
+const client = new Client({ 
+  intents: [
+    GatewayIntentBits.Guilds, 
+    GatewayIntentBits.GuildMessages, 
+    GatewayIntentBits.MessageContent, 
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessageReactions
+  ] 
+});
+
+app.get('/', (req, res) => {
+  res.send("Waffel's Complete Infrastructure is operational!");
+});
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', bot: client.user ? client.user.tag : null });
+});
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🌐 HTTP KeepAlive Server running on port ${port}`);
 });
 // ==========================================
-// PARTIE 10 : COMMANDE UNIFIÉE /TICKETPANEL ET INTÉGRATION DE VOTRE IMAGE GLISSÉE-DÉPOSÉE
+// PARTIE 4 : COLLECTION ET INJECTION DES COMMANDES SLASH (READY)
 // ==========================================
 
-async function handleUtilitySlashCommands(interaction, targetUser) {
-    if (interaction.commandName === 'ticketpanel') {
-        const title = interaction.options.getString('title', true);
-        const descRaw = interaction.options.getString('description', true);
-        const desc = descRaw.replace(/\\n/g, '\n'); 
-        const imageAttachment = interaction.options.getAttachment('image');
+const commands = [
+  new SlashCommandBuilder()
+    .setName('ticketpanel')
+    .setDescription('Deploy the interactive ticket panel with a direct file upload image (Admin Only)')
+    .addStringOption(option => option.setName('title').setDescription('The title of the ticket embed menu').setRequired(true))
+    .addStringOption(option => option.setName('description').setDescription('Rules and description text (Use \n for new lines)').setRequired(true))
+    .addAttachmentOption(option => option.setName('image').setDescription('Drag and drop or upload your panel logo/image here').setRequired(false)),
+  new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway waffle'),
+  new SlashCommandBuilder().setName('gend').setDescription('Forcefully end an active giveaway instantly 🔒')
+    .addStringOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
+  new SlashCommandBuilder().setName('greroll').setDescription('Reroll a new winner for a finished giveaway 🎲')
+    .addStringOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
+  new SlashCommandBuilder().setName('gwblacklist').setDescription('Blacklist a user from joining any giveaways 🚫')
+    .addUserOption(option => option.setName('target').setDescription('The user to blacklist').setRequired(true)),
+  new SlashCommandBuilder().setName('gwunblacklist').setDescription('Remove a user from the giveaway blacklist ✅')
+    .addUserOption(option => option.setName('target').setDescription('The user to unblacklist').setRequired(true)),
+  new SlashCommandBuilder().setName('winnerinfo').setDescription('Scans the channel history to display the summary of the last finished giveaway 🏆'),
+  new SlashCommandBuilder().setName('faq').setDescription('Display the server frequency asked questions menu 📖'),
+  new SlashCommandBuilder().setName('userinfo').setDescription('Display official profile information about a user 👤')
+    .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
+  new SlashCommandBuilder().setName('serverinfo').setDescription('Display key statistics about this server 📊'),
+  new SlashCommandBuilder().setName('avatar').setDescription('Get the full size avatar of a member 🖼️')
+    .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
+  new SlashCommandBuilder().setName('infractions').setDescription('View the moderation history and warnings of a user 📜')
+    .addUserOption(option => option.setName('target').setDescription('The user to view').setRequired(false)),
+  new SlashCommandBuilder().setName('help').setDescription('Display the list of all available bot commands 📋'),
+  new SlashCommandBuilder().setName('wjamal').setDescription('Send a random funny frog GIF 🐸'),
+  new SlashCommandBuilder().setName('claimtime').setDescription('Display official giveaway claim times and rules 🕐'),
+  new SlashCommandBuilder().setName('stats').setDescription('Display your personal giveaway statistics or those of another user 📊')
+    .addUserOption(option => option.setName('target').setDescription('The user to view stats for').setRequired(false)),
+  new SlashCommandBuilder().setName('statsreset').setDescription('Reset all giveaway statistics for a specific user 🔄')
+    .addUserOption(option => option.setName('target').setDescription('The user whose statistics will be wiped clean').setRequired(true)),
+  new SlashCommandBuilder().setName('rename').setDescription('Quickly alter the current channel name')
+    .addStringOption(option => option.setName('name').setDescription('New channel name strip').setRequired(true)),
+  new SlashCommandBuilder().setName('ticket').setDescription('Open a general support ticket (Deprecated)')
+].map(cmd => cmd.toJSON());
 
-        // Sécurité Anti-Crash Image : Utilisation de l'image glissée-déposée, sinon image transparente invisible par défaut
-        let imgUrl = imageAttachment ? imageAttachment.url : "https://imgur.com";
+client.once('ready', async () => {
+  console.log("✨ Waffel Bot fully loaded as: " + client.user.tag);
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  try {
+    if (GUILD_ID) {
+      await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), { body: commands });
+      console.log('✅ Application (/) commands injected for the designated Guild.');
+    } else {
+      await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+      console.log('✅ Application (/) commands injected globally.');
+    }
+  } catch (error) { 
+    console.error(error); 
+  }
 
-        ticketPanelsDatabase[interaction.guild.id] = { title, desc, image: imgUrl };
-        saveDatabase();
+  for (const msgId in giveawaysDatabase) {
+    const gw = giveawaysDatabase[msgId];
+    const timeLeft = gw.endTime - Date.now();
+    const channel = await client.channels.fetch(gw.channelId).catch(() => null);
+    if (!channel) {
+      delete giveawaysDatabase[msgId]; saveDatabase(); continue;
+    }
+    if (timeLeft <= 0) { runGiveawayEnd(channel, msgId); } else { resumeGiveawayCollector(channel, msgId, timeLeft); }
+  }
+});
+// ==========================================
+// PARTIE 5 : INTERCEPTION DES SALONS TEXTUELS ET COMMANDES !GSTART / !PING
+// ==========================================
 
-        const menu = new StringSelectMenuBuilder().setCustomId('select_ticket_topic').setPlaceholder('Select a topic to open a ticket...')
-            .addOptions(
-                new StringSelectMenuOptionBuilder().setLabel('Giveaway Claim').setValue('claim').setDescription('Open a channel to claim your reward').setEmoji('🎉'),                new StringSelectMenuOptionBuilder().setLabel('Buy/Sell Spawners').setValue('skelly').setDescription('Trade spawners with staff management').setEmoji('💀'),
+client.on('messageCreate', async (message) => {
+    if (!message.guild || message.author.bot) return;
+
+    if (message.content === '!ping') {
+        return message.reply('Pong!');
+    }
+
+    if (message.content.startsWith('!gstart')) {
+        if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+            return message.channel.send("❌ You need to be a **Staff Member** (with Timeout permissions) to start a giveaway.")
+                .then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        }
+        setTimeout(() => message.delete().catch(() => null), 500);
+        const args = message.content.slice('!gstart'.length).trim().split(/ +/);
+        const durationStr = args[0];
+        let prize = args.slice(1).join(' ');
+        if (!durationStr || !prize) return;
+
+        prize = prize.replace(/\bwaffle\b/gi, '🧇');
+        const durationMs = parseDuration(durationStr) || (parseInt(durationStr, 10) * 60 * 1000);
+        if (!durationMs) return;
+        
+        startGiveawayEngine(message.channel, durationMs, prize, 1, 'normal', null, message.author);
+        return;
+    }
+
+    if (!message.content.startsWith('?')) return;
+    const args = message.content.slice(1).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+
+    if (command === 'lock') {
+        setTimeout(() => message.delete().catch(() => null), 200);
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+            return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ You don't have permission to use this command.")] })
+                .then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        }
+        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
+        
+        const logEmbed = createPrefixEmbed('Channel Locked Down', 'Public text streams standard communication rows suspended.', [
+            { name: '🔒 Channel Context', value: message.channel.toString(), inline: true },
+            { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
+        ]);
+        return message.channel.send({ embeds: [logEmbed] });
+    }
+    
+    handleCoreModCommands(message, command, args);
+});
+// ==========================================
+// PARTIE 6 : ROUTINES ?UNLOCK, ?CLEAR ET ?ROLEADD
+// ==========================================
+
+async function handleCoreModCommands(message, command, args) {
+    if (command === 'unlock') {
+        setTimeout(() => message.delete().catch(() => null), 200);
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+            return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ You don't have permission to use this command.")] })
+                .then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        }
+        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: true });
+        
+        const logEmbed = createPrefixEmbed('Channel Restoration Complete', 'Standard interaction flows active again.', [
+            { name: '🔓 Channel Context', value: message.channel.toString(), inline: true },
+            { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
+        ]);
+        return message.channel.send({ embeds: [logEmbed] });
+    }
+
+    const manageMessagesPerm = message.member.permissions.has(PermissionFlagsBits.ManageMessages);
+    const banPerm = message.member.permissions.has(PermissionFlagsBits.BanMembers);
+    const manageRolesPerm = message.member.permissions.has(PermissionFlagsBits.ManageRoles);
+    const moderateMembersPerm = message.member.permissions.has(PermissionFlagsBits.ModerateMembers);
+
+    if (command === 'clear') {
+        if (!manageMessagesPerm) return message.channel.send({ embeds: [createPrefixEmbed('Error Status', "❌ Permission denied.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        const amount = parseInt(args[0], 10);
+        if (isNaN(amount) || amount < 1 || amount > 100) return message.channel.send({ embeds: [createPrefixEmbed('Warning', "⚠️ Please provide a number between 1 and 100.")] }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+        await message.channel.bulkDelete(amount + 1, true).catch(() => null);                new StringSelectMenuOptionBuilder().setLabel('Buy/Sell Spawners').setValue('skelly').setDescription('Trade spawners with staff management').setEmoji('💀'),
                 new StringSelectMenuOptionBuilder().setLabel('Support').setValue('support').setDescription('General inquiries and assistance').setEmoji('📩')
             );
 
@@ -610,7 +612,7 @@ async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
     }
 
     if (interaction.commandName === 'wjamal') {
-        const embed = new EmbedBuilder().setTitle('🐸 W JAMAL').setColor('#2ECC71').setImage('https://giphy.com');
+        const embed = new EmbedBuilder().setTitle('🐸 W JAMAL').setColor('#2ECC71').setImage('https://media.discordapp.net/attachments/1486859722869964840/1545619958606594181/petpet.gif?ex=6acf9002&is=6ace3e82&hm=ceeb79b24a43b736b2794c741813196914c81cee21c26f5ae53bacfe7fdf30cc&=');
         return interaction.reply({ embeds: [embed] });
     }
 
@@ -960,18 +962,12 @@ async function runGiveawayEnd(channel, msgId) {
     if (endMsg) await endMsg.edit({ embeds: [new EmbedBuilder().setTitle(gw.title).setDescription("🎉 GIVEAWAY ENDED!\n👑 Winner(s): " + mentions + "\n👑 Hosted by: " + gw.hostUser + "\n🎁 Each winner gets: " + gw.prize).setColor('#2ECC71')] });
 
     if (gw.mode === 'normal') {
-        winners.forEach(id => {
-            initStats(id);
-            statsDatabase[id].won += 1;
-        });
-        saveDatabase();
-
+        winners.forEach(id => { initStats(id); statsDatabase[id].won += 1; }); saveDatabase();
         for (const winnerId of winners) {
             const claim = new ButtonBuilder()
                 .setCustomId("claim_gw_" + winnerId + "_" + rawPrizeB64 + "_" + rawHostB64)
                 .setLabel('Claim 🟢')
                 .setStyle(ButtonStyle.Success);
-
             await channel.send({
                 content: "🎉 **CONGRATULATIONS** <@" + winnerId + ">! You won **" + gw.prize + "**!",
                 components: [new ActionRowBuilder().addComponents(claim)]
@@ -1028,7 +1024,16 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
                 sosColl.stop();
                 if (choices[p1] === 'split' && choices[p2] === 'split') {
                     initStats(p1); statsDatabase[p1].won += 1; initStats(p2); statsDatabase[p2].won += 1;
-                    await channel.send({ content: "🤝 **SPLIT!** Shared: " + prize, components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + p1 + "_" + rawPrizeB64 + "_" + rawHostB64))] });
+                    for (const winnerId of [p1, p2]) {
+                        const splitClaimBtn = new ButtonBuilder()
+                            .setCustomId("claim_gw_" + winnerId + "_" + rawPrizeB64 + "_" + rawHostB64)
+                            .setLabel('Claim 🟢')
+                            .setStyle(ButtonStyle.Success);
+                        await channel.send({
+                            content: "🤝 **SPLIT!** <@" + winnerId + "> can claim their share of **" + prize + "**!",
+                            components: [new ActionRowBuilder().addComponents(splitClaimBtn)]
+                        });
+                    }
                 } else if (choices[p1] === 'steal' && choices[p2] === 'steal') { await channel.send("💀 **BOTH STOLE!** No winners."); }
                 else { const thief = choices[p1] === 'steal' ? p1 : p2; initStats(thief); statsDatabase[thief].won += 1; await channel.send({ content: "😈 **BETRAYAL!** <@" + thief + "> won everything!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + thief + "_" + rawPrizeB64 + "_" + rawHostB64))] }); }
                 saveDatabase();
