@@ -38,7 +38,7 @@ let warnDatabase = {};
 let blacklistDatabase = new Set();
 let statsDatabase = {};
 let giveawaysDatabase = {}; 
-let ticketPanelsDatabase = {}; // Sauvegarde interne des panels configurés
+let ticketPanelsDatabase = {};
 const ticketData = new Map();
 
 // 💾 CHARGEMENT DE LA BASE DE DONNÉES JSON
@@ -74,9 +74,9 @@ function saveDatabase() {
 }
 
 function initStats(userId) {
-  if (!statsDatabase[userId]) {
-    statsDatabase[userId] = { entered: 0, won: 0 };
-  }
+    if (!statsDatabase[userId]) {
+        statsDatabase[userId] = { entered: 0, won: 0 };
+    }
 }
 
 function parseDuration(str) {
@@ -114,7 +114,7 @@ function createPrefixEmbed(title, description, fields = []) {
   return embed;
 }
 // ==========================================
-// PARTIE 2 : COEUR EXPRESS ET DEPLOYEMENT DES SLASHS APIS
+// PARTIE 2 : COEUR EXPRESS ET ÉCOUTEURS DISCORD INTENTS
 // ==========================================
 
 const client = new Client({ 
@@ -128,7 +128,7 @@ const client = new Client({
 });
 
 app.get('/', (req, res) => {
-  res.send("Waffel's Complete Infrastructure is operational!");
+  res.send("Waffel's Architecture is perfectly awake and running 24/7!");
 });
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', bot: client.user ? client.user.tag : null });
@@ -136,6 +136,9 @@ app.get('/health', (req, res) => {
 app.listen(port, '0.0.0.0', () => {
   console.log(`🌐 HTTP KeepAlive Server running on port ${port}`);
 });
+// ==========================================
+// PARTIE 3 : CENTRALISATION DES COMMANDES SLASHS APIS
+// ==========================================
 
 const commands = [
   new SlashCommandBuilder().setName('ticketsetup').setDescription('Deploy a custom interactive multi-topic ticket panel (Admin Only)'),
@@ -185,7 +188,6 @@ client.once('ready', async () => {
     console.error(error); 
   }
 
-  // Boucle de récupération des giveaways actifs restants en BDD
   for (const msgId in giveawaysDatabase) {
     const gw = giveawaysDatabase[msgId];
     const timeLeft = gw.endTime - Date.now();
@@ -197,7 +199,7 @@ client.once('ready', async () => {
   }
 });
 // ==========================================
-// PARTIE 3 : INTERCEPTION DES SALONS TEXTUELS ET COMMANDES !GSTART / ?LOCK
+// PARTIE 4 : INTERCEPTION DU CHAT, COMMANDES PING, GSTART ET VERROUILLAGE
 // ==========================================
 
 client.on('messageCreate', async (message) => {
@@ -213,7 +215,7 @@ client.on('messageCreate', async (message) => {
                 .then(m => setTimeout(() => m.delete().catch(() => null), 5000));
         }
         setTimeout(() => message.delete().catch(() => null), 500);
-        const args = message.content.slice('!gstartTemplate'.length).trim().split(/ +/);
+        const args = message.content.slice('!gstart'.length).trim().split(/ +/);
         const durationStr = args[0];
         let prize = args.slice(1).join(' ');
         if (!durationStr || !prize) return;
@@ -248,7 +250,7 @@ client.on('messageCreate', async (message) => {
     handleCoreModCommands(message, command, args);
 });
 // ==========================================
-// PARTIE 4 : LOGIQUE DE CONFIGURATION ?UNLOCK, ?CLEAR ET ?ROLEADD
+// PARTIE 5 : COMMANDES TEXTUELLES DE NETTOYAGE ET ATTRIBUTION DE RÔLES
 // ==========================================
 
 async function handleCoreModCommands(message, command, args) {
@@ -307,7 +309,7 @@ async function handleCoreModCommands(message, command, args) {
     handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm);
 }
 // ==========================================
-// PARTIE 5 : GESTION DES HISTORIQUES INFRACTIONS ET DROITS EXCLUSIFS SR. MOD +
+// PARTIE 6 : REGISTRE DES INFRACTIONS ET DROITS EXCLUSIFS DE BAN DU PREFIXE
 // ==========================================
 
 async function handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm) {
@@ -437,7 +439,7 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
     }
 }
 // ==========================================
-// PARTIE 6 : INTERACTIONCREATE ET FILTRE DE SÉCURITÉ DE LA COMMANDE RENAME
+// PARTIE 7 : ROUTE DES INTERACTIONS SLASHS ET DE LA COMMANDE RENAME INFINIE
 // ==========================================
 
 client.on('interactionCreate', async (interaction) => {
@@ -517,7 +519,7 @@ client.on('interactionCreate', async (interaction) => {
     handleComponentInteractions(interaction);
 });
 // ==========================================
-// PARTIE 7 : ROUTINE COMMANDE /TICKETSETUP DE CONCEPTION DES PANELS
+// PARTIE 8 : INITIALISATION DU CONSTRUCTEUR TECHNIQUE DE PANELS DE TICKETS
 // ==========================================
 
 async function handleUtilitySlashCommands(interaction, targetUser) {
@@ -563,7 +565,7 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
     handleRestOfUtilitySlashCommands(interaction, targetUser);
 }
 // ==========================================
-// PARTIE 8 : INVENTAIRE COMMANDES D'INFORMATIONS ET REQUÊTES PUBLIQUES
+// PARTIE 9 : REQUÊTES D'INFORMATIONS ET CONTRÔLE DES RECHERCHES MEMBRES
 // ==========================================
 
 async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
@@ -616,14 +618,19 @@ async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
     handleGiveawayEngineSlashCommands(interaction);
 }
 // ==========================================
-// PARTIE 9 : RECEPTION CONFIGURATION ET DEPLOIMENT EN DIRECT DU MENU DÉROULANT
+// PARTIE 10 : DEPLOIEMENT DU COMPOSANT GRAPHIQUE ET TRAITEMENT ANTI-CRASH IMAGES
 // ==========================================
 
 async function handleComponentInteractions(interaction) {
     if (interaction.isModalSubmit() && interaction.customId === 'setup_panel_main') {
         const title = interaction.fields.getTextInputValue('panel_title');
         const desc = interaction.fields.getTextInputValue('panel_desc');
-        const imgUrl = interaction.fields.getTextInputValue('panel_image') || "https://imgur.com"; 
+        let imgUrl = interaction.fields.getTextInputValue('panel_image'); 
+
+        // Sécurité Anti-Crash Image : Validation du format exact d'extension
+        if (!imgUrl || !imgUrl.match(/\.(jpeg|jpg|gif|png)$/i)) {
+            imgUrl = "https://giphy.com"; // Logo grenouille de repli si le lien est brisé
+        }
 
         ticketPanelsDatabase[interaction.guild.id] = { title, desc, image: imgUrl };
         saveDatabase();
@@ -643,55 +650,98 @@ async function handleComponentInteractions(interaction) {
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_ticket_topic') {
+        // CORRIGÉ : Extraction précise de l'index unique [0] du menu déroulant
         const topic = interaction.values[0];
         
-        let modalTitle = "Ticket Form";
-        let questionLabel = "What do you need help with?";
-        if (topic === 'claim') { modalTitle = "Giveaway Claim Verification"; questionLabel = "What is your In-Game Name (IGN)?"; }
-        else if (topic === 'skelly') { modalTitle = "Spawner Trade Department"; questionLabel = "Specify Amount & Spawner item details:"; }
-        else if (topic === 'support') { modalTitle = "General Support Request"; questionLabel = "Describe your issue / question:"; }
+        if (topic === 'claim') {
+            const modal = new ModalBuilder().setCustomId('submit_ticket_channel_claim').setTitle('Giveaway Claim Verification');
+            
+            const q1 = new TextInputBuilder().setCustomId('claim_q1').setLabel("What's your Minecraft username?").setStyle(TextInputStyle.Short).setRequired(true);
+            const q2 = new TextInputBuilder().setCustomId('claim_q2').setLabel("How Much Did You Win?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 15m").setRequired(true);
+            const q3 = new TextInputBuilder().setCustomId('claim_q3').setLabel("Who hosted the giveaway?").setStyle(TextInputStyle.Short).setRequired(true);
+            const q4 = new TextInputBuilder().setCustomId('claim_q4').setLabel("Send proof that you won").setStyle(TextInputStyle.Paragraph).setPlaceholder("Paste a link to your screenshot/proof here").setRequired(true);
 
-        const modal = new ModalBuilder().setCustomId(`submit_ticket_channel_${topic}`).setTitle(modalTitle);
-        const questionInput = new TextInputBuilder().setCustomId('user_response').setLabel(questionLabel).setStyle(topic === 'claim' ? TextInputStyle.Short : TextInputStyle.Paragraph).setRequired(true);
+            modal.addComponents(new ActionRowBuilder().addComponents(q1), new ActionRowBuilder().addComponents(q2), new ActionRowBuilder().addComponents(q3), new ActionRowBuilder().addComponents(q4));
+            return interaction.showModal(modal);
+        }
         
-        modal.addComponents(new ActionRowBuilder().addComponents(questionInput));
-        return interaction.showModal(modal);
+        if (topic === 'skelly') {
+            const modal = new ModalBuilder().setCustomId('submit_ticket_channel_skelly').setTitle('Spawner Trade Department');
+            
+            const q1 = new TextInputBuilder().setCustomId('skelly_q1').setLabel("What's your Minecraft username?").setStyle(TextInputStyle.Short).setRequired(true);
+            const q2 = new TextInputBuilder().setCustomId('skelly_q2').setLabel("What type of spawner?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., skellys").setRequired(true);
+            const q3 = new TextInputBuilder().setCustomId('skelly_q3').setLabel("Are you buying or selling?").setStyle(TextInputStyle.Short).setPlaceholder("buying / selling").setRequired(true);
+            const q4 = new TextInputBuilder().setCustomId('skelly_q4').setLabel("How many are you buying/selling?").setStyle(TextInputStyle.Short).setRequired(true);
+            const q5 = new TextInputBuilder().setCustomId('skelly_q5').setLabel("Do you agree with our prices?").setStyle(TextInputStyle.Short).setValue("yes").setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(q1), new ActionRowBuilder().addComponents(q2), new ActionRowBuilder().addComponents(q3), new ActionRowBuilder().addComponents(q4), new ActionRowBuilder().addComponents(q5));
+            return interaction.showModal(modal);
+        }
+        
+        if (topic === 'support') {
+            const modal = new ModalBuilder().setCustomId('submit_ticket_channel_support').setTitle('General Support Request');
+            const q1 = new TextInputBuilder().setCustomId('support_q1').setLabel("How can we help you today?").setStyle(TextInputStyle.Paragraph).setPlaceholder("Describe your issue or question in detail...").setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(q1));
+            return interaction.showModal(modal);
+        }
     }
     
     handleGiveawaySetupComponentsAndClaims(interaction);
 }
 // ==========================================
-// PARTIE 10 : CRÉATION DE SALONS TICKETS AVEC DROITS ET PINGS CIBLÉS
+// PARTIE 11 : RECEPTION DES REPONSES ET GENERATION COMPTABLE DU LOG TICKETS
 // ==========================================
 
 async function handleGiveawaySetupComponentsAndClaims(interaction) {
     if (interaction.isModalSubmit() && interaction.customId.startsWith('submit_ticket_channel_')) {
         const topic = interaction.customId.replace('submit_ticket_channel_', '');
-        const userQuery = interaction.fields.getTextInputValue('user_response');
         const guild = interaction.guild;
 
         await interaction.deferReply({ ephemeral: true });
 
         let roleToPing = ROLE_TICKET_TEAM; 
         let topicLabel = "Support";
+        let fieldsLayout = [];
 
-        if (topic === 'claim') { roleToPing = ROLE_TICKET_TEAM; topicLabel = "Giveaway-Claim"; }
-        else if (topic === 'skelly') { roleToPing = ROLE_SKELLY; topicLabel = "Skelly-Spawners"; }
-        else if (topic === 'support') { roleToPing = ROLE_TICKET_TEAM; topicLabel = "General-Support"; }
+        if (topic === 'claim') {
+            roleToPing = ROLE_TICKET_TEAM;
+            topicLabel = "Giveaway-Claim";
+            fieldsLayout = [
+                { name: "What's your Minecraft username?", value: interaction.fields.getTextInputValue('claim_q1'), inline: false },
+                { name: "How Much Did You Win?", value: interaction.fields.getTextInputValue('claim_q2'), inline: false },
+                { name: "Who hosted the giveaway?", value: interaction.fields.getTextInputValue('claim_q3'), inline: false },
+                { name: "Send proof that you won", value: interaction.fields.getTextInputValue('claim_q4'), inline: false }
+            ];
+        } 
+        else if (topic === 'skelly') {
+            roleToPing = ROLE_SKELLY;
+            topicLabel = "Skelly-Spawners";
+            fieldsLayout = [
+                { name: "What's your Minecraft username?", value: interaction.fields.getTextInputValue('skelly_q1'), inline: false },
+                { name: "What type of spawner?", value: interaction.fields.getTextInputValue('skelly_q2'), inline: false },
+                { name: "Are you buying or selling?", value: interaction.fields.getTextInputValue('skelly_q3'), inline: false },
+                { name: "How many are you buying/selling?", value: interaction.fields.getTextInputValue('skelly_q4'), inline: false },
+                { name: "Do you agree with our prices?", value: interaction.fields.getTextInputValue('skelly_q5'), inline: false }
+            ];
+        } 
+        else if (topic === 'support') {
+            roleToPing = ROLE_TICKET_TEAM;
+            topicLabel = "General-Support";
+            fieldsLayout = [
+                { name: "Please describe your issue and wait for a response.", value: interaction.fields.getTextInputValue('support_q1'), inline: false }
+            ];
+        }
 
         try {
             const channel = await guild.channels.create({
-                name: ensureTicketChannelName(`🎫-topicLabel-{interaction.user.username}`),
+                name: ensureTicketChannelName(`🎫-${topicLabel}-${interaction.user.username}`),
                 type: ChannelType.GuildText,
                 parent: SECURE_CATEGORY_ID,
                 permissionOverwrites: [
                     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
                     { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
-                    
-                    // Directives : Visibilité complète garantie pour TOUT le Staff
                     { id: SECURE_STAFF_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                    
-                    // Droits additionnels de modération étendus pour la Ticket Team
                     { id: ROLE_TICKET_TEAM, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages] },
                     { id: ROLE_SKELLY, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
                 ]
@@ -700,28 +750,25 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
             ticketData.set(channel.id, { ownerId: interaction.user.id, createdAt: Date.now() });
 
             const embed = new EmbedBuilder()
-                .setTitle(`🎫 New Ticket Opened - \${topicLabel}`)
-                .setDescription(`Hello \${interaction.user.toString()}, a staff member specialized in this department will assist you shortly.\n\n*Staff members can click the button below to close this channel.*`)
-                .setColor('#00AAFF')
-                .addFields(
-                    { name: '👤 Opener Profile', value: interaction.user.toString(), inline: true },
-                    { name: '📇 Category Dept', value: topicLabel, inline: true },
-                    { name: '📝 Form Response Provided', value: `\`\`\`${userQuery}\`\`\``, inline: false }
-                )
-                .setTimestamp();
+                .setTitle(`🎫 Department: ${topicLabel}`)
+                .setDescription(`Welcome ${interaction.user.toString()}, our team has been notified. Please find your summary answers below:`)
+                .setColor('#2F3136')
+                .addFields(fieldsLayout)
+                .setTimestamp()
+                .setFooter({ text: "Powered by Waffel Systems" });
 
-            const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('close_giveaway_ticket').setLabel('Close Ticket 🔴').setStyle(ButtonStyle.Danger));
+            const closeRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('close_giveaway_ticket').setLabel('Close Ticket 🔴').setStyle(ButtonStyle.Danger)
+            );
 
-            // Envoi de l'embed avec notification ciblée (Ping Rôle Skelly ou Ticket Team)
-            await channel.send({ content: `🔔 <@&${roleToPing}> | New ticket request received.`, embeds: [embed], components: [closeRow] });
-            return interaction.editReply({ content: `✅ **Ticket created successfully!** Step into your private channel area: ${channel.toString()}` });
+            await channel.send({ content: `🔔 <@&${roleToPing}> | New custom ticket form submitted by ${interaction.user.toString()}`, embeds: [embed], components: [closeRow] });
+            return interaction.editReply({ content: `✅ **Ticket created successfully!** Please go to your channel: ${channel.toString()}` });
         } catch (e) {
             console.error(e);
             return interaction.editReply({ content: "❌ **Configuration Error.** Impossible to generate the room channel. Check structural category parent permissions." });
         }
     }
 
-    // Gestion du menu Select d'initialisation des Giveaways d'origine
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
         const mode = interaction.values[0]; 
         const modal = new ModalBuilder().setCustomId("modal_waffel_" + mode).setTitle("Setup: " + mode.toUpperCase());
@@ -751,108 +798,27 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
     handleOriginalGiveawayLogicProcessing(interaction);
 }
 // ==========================================
-// PARTIE 11 : BOUTONS SÉCURISÉS, INHIBITION DU STAFF ET ENGIN GIVEAWAY
-// ==========================================
-
-async function handleOriginalGiveawayLogicProcessing(interaction) {
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_claim_ticket_')) {
-        return interaction.reply({ content: "❌ Legacy command aborted. Please use the custom dropdown interaction selection instead.", ephemeral: true });
-    }
-    handleButtonsEngineProcessing(interaction);
-}
-
-async function handleButtonsEngineProcessing(interaction) {
-    if (interaction.isButton() && interaction.customId.startsWith('claim_gw_')) {
-        const parts = interaction.customId.split('_');
-        const allowedWinnerId = parts[2]; const rawPrizeB64 = parts[3]; const rawHostB64 = parts[4];      
-        if (interaction.user.id !== allowedWinnerId) return interaction.reply({ content: "❌ Access Denied.", ephemeral: true });
-
-        const modal = new ModalBuilder().setCustomId("modal_claim_ticket_" + allowedWinnerId + "_" + rawPrizeB64 + "_" + rawHostB64).setTitle('Claim Reward Menu');
-        const ignInput = new TextInputBuilder().setCustomId('claim_ign').setLabel("What is your IGN?").setStyle(TextInputStyle.Short).setRequired(true);
-        modal.addComponents(new ActionRowBuilder().addComponents(ignInput));
-        await interaction.showModal(modal);
-    }
-
-    if (interaction.isButton() && interaction.customId === 'close_giveaway_ticket') {
-        const member = interaction.member;
-        const isStaff = member.roles.cache.has(SECURE_STAFF_ROLE_ID) || member.roles.cache.has(ROLE_TICKET_TEAM) || member.permissions.has(PermissionFlagsBits.Administrator);
-        if (!isStaff) return interaction.reply({ content: "❌ Staff access only.", ephemeral: true });
-        
-        await interaction.reply({ content: "🔒 Purging channel and removing ticket logs in 5 seconds..." });
-        setTimeout(async () => { await interaction.channel.delete().catch(() => null); }, 5000);
-        return;
-    }
-}
-
-async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode, customTitle, hostUser) {
-    const endTime = Date.now() + durationMs;
-    const endTimeStamp = Math.floor(endTime / 1000);
-    const title = customTitle ? " 🧇 " + customTitle + " 🧇 " : "✨ WAFFEL'S GIVEAWAY ✨";
-
-    let description = "⏳ **Ends:** <t:" + endTimeStamp + ":R>\n👑 **Hosted by:** " + hostUser.toString() + "\n👥 **Entries:** **0**\n🏆 **Winners:** **" + winnerCount + "********\n🎁 **Prize:** **" + prize + "**";
-    if (mode === 'clicker') description = "⚡ **CLICKER SPEED GAME** ⚡\n👑 **Hosted by:** " + hostUser.toString() + "\n🎁 **Prize:** **" + prize + "**\n\n🚨 FIRST click wins!";
-
-    const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor('#F1C40F').setTimestamp();
-    const btn = new ButtonBuilder().setCustomId('enter_giveaway').setLabel(mode === 'clicker' ? 'CLICK ME NOW! ⚡' : 'Join! 🎉').setStyle(ButtonStyle.Primary);
-    const msg = await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
-
-    giveawaysDatabase[msg.id] = { channelId: channel.id, endTime: endTime, prize: prize, winnerCount: winnerCount, mode: mode, title: title, hostUser: hostUser.toString(), participants: [] };
-    saveDatabase();
-    resumeGiveawayCollector(channel, msg.id, durationMs);
-}
-
-function resumeGiveawayCollector(channel, msgId, durationMs) {
-    const collector = channel.createMessageComponentCollector({ filter: i => i.message.id === msgId, time: durationMs });
-
-    collector.on('collect', async (btnInt) => {
-        const gw = giveawaysDatabase[msgId]; if (!gw) return;
-
-        if (btnInt.customId === 'enter_giveaway') {
-            // DIRECTIVE : Blocage du Staff au clic du bouton (Bouton bloqué s'il possède le rôle ou les droits Mod)
-            if (btnInt.member.permissions.has(PermissionFlagsBits.ModerateMembers) || btnInt.member.roles.cache.has(SECURE_STAFF_ROLE_ID)) {
-                return btnInt.reply({ content: "❌ **Access Denied.** Staff members cannot participate in community giveaways.", ephemeral: true });
-            }
-            if (blacklistDatabase.has(btnInt.user.id)) return btnInt.reply({ content: "❌ Blacklisted.", ephemeral: true });
-
-            if (gw.mode === 'clicker') {
-                gw.participants.push(btnInt.user.id);
-                initStats(btnInt.user.id); statsDatabase[btnInt.user.id].entered += 1; saveDatabase();
-                await btnInt.reply({ content: "🧇 Speed click recorded! Checking accuracy...", ephemeral: true });
-                collector.stop();
-            } else {
-                if (gw.participants.includes(btnInt.user.id)) {
-                    return btnInt.reply({ content: "⚠️ Already registered.", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("leave_gw_" + btnInt.user.id).setLabel('Leave 🚨').setStyle(ButtonStyle.Danger))], ephemeral: true });
-                }
-                gw.participants.push(btnInt.user.id);
-                initStats(btnInt.user.id); statsDatabase[btnInt.user.id].entered += 1; saveDatabase();
-
-                const upEmbed = new EmbedBuilder().setTitle(gw.title).setColor('#F1C40F').setTimestamp()
-                    .setDescription("⏳ **Ends:** <t:" + Math.floor(gw.endTime / 1000) + ":R>\n👑 **Hosted by:** " + gw.hostUser + "\n👥 **Entries:** **" + gw.participants.length + "**\n🏆 **Winners:** **" + gw.winnerCount + "**\n🎁 **Prize:** **" + gw.prize + "**");
-                await btnInt.update({ embeds: [upEmbed] });
-            }
-        }
-        handleLeaveActionCollector(btnInt, channel, msgId);
-    });
-    collector.on('end', () => { runGiveawayEnd(channel, msgId); });
-}
-// ==========================================
-// PARTIE 12.1 : CLÔTURE DES CONCOURS ET MINI-JEU DOUBLE OR KEEP
+// PARTIE 12.1 : ENREGISTREMENT DE FIN ET DUEL DOUBLE OR KEEP (CORRIGÉ)
 // ==========================================
 
 async function handleLeaveActionCollector(btnInt, channel, msgId) {
     if (btnInt.customId.startsWith('leave_gw_')) {
         if (btnInt.user.id !== btnInt.customId.replace('leave_gw_', '')) return btnInt.reply({ content: "❌ Not your button.", ephemeral: true });
-        const gw = giveawaysDatabase[msgId]; const idx = gw.participants.indexOf(btnInt.user.id);
+        const gw = giveawaysDatabase[msgId]; 
+        const idx = gw.participants.indexOf(btnInt.user.id);
         if (idx > -1) {
             gw.participants.splice(idx, 1);
-            if (statsDatabase[btnInt.user.id] && statsDatabase[btnInt.user.id].entered > 0) statsDatabase[btnInt.user.id].entered -= 1;
+            if (statsDatabase[btnInt.user.id] && statsDatabase[btnInt.user.id].entered > 0) {
+                statsDatabase[btnInt.user.id].entered -= 1;
+            }
             
             const upEmbed = new EmbedBuilder().setTitle(gw.title).setColor('#F1C40F').setTimestamp()
                 .setDescription("⏳ **Ends:** <t:" + Math.floor(gw.endTime / 1000) + ":R>\n👑 **Hosted by:** " + gw.hostUser + "\n👥 **Entries:** **" + gw.participants.length + "**\n🏆 **Winners:** **" + gw.winnerCount + "**\n🎁 **Prize:** **" + gw.prize + "**");
             
             const originalMsg = await channel.messages.fetch(msgId).catch(() => null);
             if (originalMsg) await originalMsg.edit({ embeds: [upEmbed] });
-            await btnInt.update({ content: "👋 Successfully left.", components: [] }); saveDatabase();
+            await btnInt.update({ content: "👋 Successfully left.", components: [] }); 
+            saveDatabase();
         }
     }
 }
@@ -907,7 +873,7 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
             gameColl.stop();
             if (gInt.customId === 'dok_keep') {
                 initStats(wId); statsDatabase[wId].won += 1; saveDatabase();
-                await gInt.reply({ content: "🔒 kept **" + prize + "**!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64))] });
+                await gInt.reply({ content: "🔒 Kept **" + prize + "**!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64))] });
             } else {
                 let nPrize = prize; const match = prize.match(/\d+/);
                 if (match) { const oldN = parseInt(match[0], 10); nPrize = prize.replace(oldN, oldN * 2); } else { nPrize = "2x " + prize; }
@@ -919,7 +885,7 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
     handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn);
 }
 // ==========================================
-// PARTIE 12.2 : ARBITRAGE SOS / RPS ET APPEL DE SÉCURITÉ LOGIN FINAL
+// PARTIE 12.2 : ARBITRAGE SOS / RPS ET ENCLENCHEMENT DU LOGIN DISCORD
 // ==========================================
 
 async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn) {
@@ -995,7 +961,7 @@ async function handleGiveawayEngineSlashCommands(interaction) {
         const msgId = interaction.options.getString('message_id');
         const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
         if (!targetMsg || targetMsg.embeds.length === 0) return interaction.reply({ content: "❌ Invalid message.", ephemeral: true });
-        const originalEmbed = targetMsg.embeds;
+        const originalEmbed = targetMsg.embeds[0];
         const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Prize:\*\* (.+)/) : null;
         let prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
 
@@ -1026,6 +992,9 @@ async function handleGiveawayEngineSlashCommands(interaction) {
     handleAdminBlacklistSlashCommands(interaction);
 }
 
-// Lancement final sécurisé
-if (!process.env.DISCORD_TOKEN) { console.error('❌ Missing DISCORD_TOKEN.'); process.exit(1); }
+// Lancement final sécurisé du bot
+if (!process.env.DISCORD_TOKEN) { 
+    console.error('❌ Missing DISCORD_TOKEN.'); 
+    process.exit(1); 
+}
 client.login(process.env.DISCORD_TOKEN).catch(e => console.error(e));
