@@ -74,9 +74,9 @@ function saveDatabase() {
 }
 
 function initStats(userId) {
-    if (!statsDatabase[userId]) {
-        statsDatabase[userId] = { entered: 0, won: 0 };
-    }
+  if (!statsDatabase[userId]) {
+    statsDatabase[userId] = { entered: 0, won: 0 };
+  }
 }
 
 function parseDuration(str) {
@@ -97,7 +97,7 @@ function ensureTicketChannelName(name) {
     .toLowerCase()
     .replace(/[^a-z0-9-_]+/g, '-')
     .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+    .replace(/^-|-\$/g, '')
     .slice(0, 80);
 }
 
@@ -113,9 +113,6 @@ function createPrefixEmbed(title, description, fields = []) {
   }
   return embed;
 }
-// ==========================================
-// PARTIE 2 : COEUR EXPRESS ET ÉCOUTEURS DISCORD INTENTS
-// ==========================================
 
 const client = new Client({ 
   intents: [
@@ -128,7 +125,7 @@ const client = new Client({
 });
 
 app.get('/', (req, res) => {
-  res.send("Waffel's Architecture is perfectly awake and running 24/7!");
+  res.send("Waffel's Complete Infrastructure is operational!");
 });
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', bot: client.user ? client.user.tag : null });
@@ -137,7 +134,7 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`🌐 HTTP KeepAlive Server running on port ${port}`);
 });
 // ==========================================
-// PARTIE 3 : CENTRALISATION DES COMMANDES SLASHS APIS
+// PARTIE 2 : ENREGISTREMENT DES COMMANDES SLASH ET EVENEMENT READY
 // ==========================================
 
 const commands = [
@@ -199,7 +196,7 @@ client.once('ready', async () => {
   }
 });
 // ==========================================
-// PARTIE 4 : INTERCEPTION DU CHAT, COMMANDES PING, GSTART ET VERROUILLAGE
+// PARTIE 3 : INTERCEPTION DES SALONS TEXTUELS ET COMMANDES !GSTART / !PING
 // ==========================================
 
 client.on('messageCreate', async (message) => {
@@ -250,7 +247,7 @@ client.on('messageCreate', async (message) => {
     handleCoreModCommands(message, command, args);
 });
 // ==========================================
-// PARTIE 5 : COMMANDES TEXTUELLES DE NETTOYAGE ET ATTRIBUTION DE RÔLES
+// PARTIE 4 : LOGIQUE DE CONFIGURATION ?UNLOCK, ?CLEAR ET ?ROLEADD
 // ==========================================
 
 async function handleCoreModCommands(message, command, args) {
@@ -309,7 +306,7 @@ async function handleCoreModCommands(message, command, args) {
     handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm);
 }
 // ==========================================
-// PARTIE 6 : REGISTRE DES INFRACTIONS ET DROITS EXCLUSIFS DE BAN DU PREFIXE
+// PARTIE 5 : ATTRIBUTION DES STRKES ET SÉCURISATION UNWARN (SR. MOD +)
 // ==========================================
 
 async function handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm) {
@@ -355,6 +352,13 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
         return message.channel.send({ embeds: [logEmbed] });
     }
 
+    handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm);
+}
+// ==========================================
+// PARTIE 6 : LOGIQUE DE MUTELOCK ET SÉCURISATION STRICTE DU BAN (SR. MOD +)
+// ==========================================
+
+async function handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm) {
     if (command === 'to' || command === 'rto') {
         setTimeout(() => message.delete().catch(() => null), 200);
         if (!moderateMembersPerm) {
@@ -439,7 +443,7 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
     }
 }
 // ==========================================
-// PARTIE 7 : ROUTE DES INTERACTIONS SLASHS ET DE LA COMMANDE RENAME INFINIE
+// PARTIE 7 : GESTION DES INTERACTIONS SLASH ET SÉCURITÉ DE LA COMMANDE RENAME
 // ==========================================
 
 client.on('interactionCreate', async (interaction) => {
@@ -455,16 +459,29 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
+    if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
+        if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+            return interaction.reply({ content: "❌ You don't have Staff permissions to interact with this setup menu.", ephemeral: true });
+        }
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_waffel_')) {
+        if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+            return interaction.reply({ content: "❌ Permission denied. This action is restricted to Staff.", ephemeral: true });
+        }
+    }
+
     if (interaction.isChatInputCommand()) {
         const targetUser = interaction.options.getUser('target') || interaction.user;
 
+        // Commande /rename universelle réutilisable à l'infini
         if (interaction.commandName === 'rename') {
             const member = interaction.member;
             const isStaff = member.roles && member.roles.cache && member.roles.cache.has(SECURE_STAFF_ROLE_ID);
             const isAdmin = member.permissions && member.permissions.has(PermissionFlagsBits.Administrator);
 
             if (!isStaff && !isAdmin) {
-                return interaction.reply({ content: 'Only authenticated operational staff can perform configuration renames.', ephemeral: true });
+                return interaction.reply({ content: '❌ Only authenticated operational staff can perform configuration renames.', ephemeral: true });
             }
             
             const channel = interaction.channel;
@@ -482,7 +499,6 @@ client.on('interactionCreate', async (interaction) => {
                 await channel.setName(newName);
                 return interaction.reply({ content: 'Successfully changed channel identity state to: **' + newName + '**', ephemeral: true });
             } catch (err) {
-                console.error('Failed to rename channel:', err);
                 if (err.code === 50035 || err.message.toLowerCase().includes('rate limit')) {
                     return interaction.reply({
                         content: '⚠️ **Discord Rate Limit !** Vous renommez ce salon trop vite. Veuillez patienter 5 à 10 minutes avant de pouvoir changer son nom à nouveau.',
@@ -519,10 +535,11 @@ client.on('interactionCreate', async (interaction) => {
     handleComponentInteractions(interaction);
 });
 // ==========================================
-// PARTIE 8 : INITIALISATION DU CONSTRUCTEUR TECHNIQUE DE PANELS DE TICKETS
+// PARTIE 8 : INITIALISATION DE L'ASSISTANT GRAPHIQUE CONFIGURATION PANELS
 // ==========================================
 
 async function handleUtilitySlashCommands(interaction, targetUser) {
+    // Commande exclusive /ticketsetup : Ouvre le Modal d'administration principale
     if (interaction.commandName === 'ticketsetup') {
         const modal = new ModalBuilder().setCustomId('setup_panel_main').setTitle('Create Ticket Panel Menu 🎫');
         
@@ -565,7 +582,7 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
     handleRestOfUtilitySlashCommands(interaction, targetUser);
 }
 // ==========================================
-// PARTIE 9 : REQUÊTES D'INFORMATIONS ET CONTRÔLE DES RECHERCHES MEMBRES
+// PARTIE 9 : INVENTAIRE COMMANDES D'INFORMATIONS ET REQUÊTES PUBLIQUES
 // ==========================================
 
 async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
@@ -618,18 +635,19 @@ async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
     handleGiveawayEngineSlashCommands(interaction);
 }
 // ==========================================
-// PARTIE 10 : DEPLOIEMENT DU COMPOSANT GRAPHIQUE ET TRAITEMENT ANTI-CRASH IMAGES
+// PARTIE 10 : ENREGISTREMENT ET DEPLOYEMENT DES QUESTIONNAIRES MULTIPLES
 // ==========================================
 
 async function handleComponentInteractions(interaction) {
+    // 1. Validation de l'assistant de configuration (Création du Panel principal)
     if (interaction.isModalSubmit() && interaction.customId === 'setup_panel_main') {
         const title = interaction.fields.getTextInputValue('panel_title');
         const desc = interaction.fields.getTextInputValue('panel_desc');
         let imgUrl = interaction.fields.getTextInputValue('panel_image'); 
 
-        // Sécurité Anti-Crash Image : Validation du format exact d'extension
+        // Sécurité Anti-Crash Image : Si le lien ne finit pas par une extension valide, on met un pixel transparent
         if (!imgUrl || !imgUrl.match(/\.(jpeg|jpg|gif|png)$/i)) {
-            imgUrl = "https://giphy.com"; // Logo grenouille de repli si le lien est brisé
+            imgUrl = "https://imgur.com"; 
         }
 
         ticketPanelsDatabase[interaction.guild.id] = { title, desc, image: imgUrl };
@@ -649,8 +667,8 @@ async function handleComponentInteractions(interaction) {
         return interaction.reply({ content: "✅ **Ticket Panel deployed successfully!** Direct native system active.", ephemeral: true });
     }
 
+    // 2. Interception du choix dans le menu déroulant et affichage du questionnaire adapté
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_ticket_topic') {
-        // CORRIGÉ : Extraction précise de l'index unique [0] du menu déroulant
         const topic = interaction.values[0];
         
         if (topic === 'claim') {
@@ -680,6 +698,7 @@ async function handleComponentInteractions(interaction) {
         
         if (topic === 'support') {
             const modal = new ModalBuilder().setCustomId('submit_ticket_channel_support').setTitle('General Support Request');
+            
             const q1 = new TextInputBuilder().setCustomId('support_q1').setLabel("How can we help you today?").setStyle(TextInputStyle.Paragraph).setPlaceholder("Describe your issue or question in detail...").setRequired(true);
 
             modal.addComponents(new ActionRowBuilder().addComponents(q1));
@@ -690,7 +709,7 @@ async function handleComponentInteractions(interaction) {
     handleGiveawaySetupComponentsAndClaims(interaction);
 }
 // ==========================================
-// PARTIE 11 : RECEPTION DES REPONSES ET GENERATION COMPTABLE DU LOG TICKETS
+// PARTIE 11 : RECEPTION DES RÉPONSES MULTIPLES ET FORMATAGE DU SALON PRIVÉ
 // ==========================================
 
 async function handleGiveawaySetupComponentsAndClaims(interaction) {
@@ -704,6 +723,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
         let topicLabel = "Support";
         let fieldsLayout = [];
 
+        // Construction dynamique des champs de l'embed d'après le formulaire soumis
         if (topic === 'claim') {
             roleToPing = ROLE_TICKET_TEAM;
             topicLabel = "Giveaway-Claim";
@@ -751,7 +771,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
 
             const embed = new EmbedBuilder()
                 .setTitle(`🎫 Department: ${topicLabel}`)
-                .setDescription(`Welcome ${interaction.user.toString()}, our team has been notified. Please find your summary answers below:`)
+                .setDescription(`Welcome ${interaction.user.toString()}, our team has been notified. Please find your summary answers below :`)
                 .setColor('#2F3136')
                 .addFields(fieldsLayout)
                 .setTimestamp()
@@ -762,7 +782,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
             );
 
             await channel.send({ content: `🔔 <@&${roleToPing}> | New custom ticket form submitted by ${interaction.user.toString()}`, embeds: [embed], components: [closeRow] });
-            return interaction.editReply({ content: `✅ **Ticket created successfully!** Please go to your channel: ${channel.toString()}` });
+            return interaction.editReply({ content: `✅ **Ticket created successfully!** Please go to your salon: ${channel.toString()}` });
         } catch (e) {
             console.error(e);
             return interaction.editReply({ content: "❌ **Configuration Error.** Impossible to generate the room channel. Check structural category parent permissions." });
@@ -798,30 +818,119 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
     handleOriginalGiveawayLogicProcessing(interaction);
 }
 // ==========================================
-// PARTIE 12.1 : ENREGISTREMENT DE FIN ET DUEL DOUBLE OR KEEP (CORRIGÉ)
+// PARTIE 12 : SÉCURISATION DU ROUTAGE ANTI-CRASH ET ENGIN DE LANCEMENT
 // ==========================================
+
+async function handleOriginalGiveawayLogicProcessing(interaction) {
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_claim_ticket_')) {
+        return interaction.reply({ 
+            content: "❌ Legacy command aborted. Please use the custom dropdown interaction selection instead.", 
+            ephemeral: true 
+        });
+    }
+    return handleButtonsEngineProcessing(interaction);
+}
+
+async function handleButtonsEngineProcessing(interaction) {
+    if (interaction.isButton() && interaction.customId.startsWith('claim_gw_')) {
+        const parts = interaction.customId.split('_');
+        const allowedWinnerId = parts[2]; 
+        const rawPrizeB64 = parts[3]; 
+        const rawHostB64 = parts[4];      
+        if (interaction.user.id !== allowedWinnerId) return interaction.reply({ content: "❌ Access Denied.", ephemeral: true });
+
+        const modal = new ModalBuilder().setCustomId("modal_claim_ticket_" + allowedWinnerId + "_" + rawPrizeB64 + "_" + rawHostB64).setTitle('Claim Reward Menu');
+        const ignInput = new TextInputBuilder().setCustomId('claim_ign').setLabel("What is your IGN?").setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(ignInput));
+        await interaction.showModal(modal);
+    }
+
+    if (interaction.isButton() && interaction.customId === 'close_giveaway_ticket') {
+        const member = interaction.member;
+        const isStaff = member.roles.cache.has(SECURE_STAFF_ROLE_ID) || member.roles.cache.has(ROLE_TICKET_TEAM) || member.permissions.has(PermissionFlagsBits.Administrator);
+        if (!isStaff) return interaction.reply({ content: "❌ Staff access only.", ephemeral: true });
+        
+        await interaction.reply({ content: "🔒 Purging channel and removing ticket logs in 5 seconds..." });
+        setTimeout(async () => { await interaction.channel.delete().catch(() => null); }, 5000);
+        return;
+    }
+}
+
+async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode, customTitle, hostUser) {
+    const endTime = Date.now() + durationMs;
+    const endTimeStamp = Math.floor(endTime / 1000);
+    const title = customTitle ? " 🧇 " + customTitle + " 🧇 " : "✨ WAFFEL'S GIVEAWAY ✨";
+
+    let description = "⏳ **Ends:** <t:" + endTimeStamp + ":R>\n👑 **Hosted by:** " + hostUser.toString() + "\n👥 **Entries:** **0**\n🏆 **Winners:** **" + winnerCount + "**\n🎁 **Prize:** **" + prize + "**";
+    if (mode === 'clicker') description = "⚡ **CLICKER SPEED GAME** ⚡\n👑 **Hosted by:** " + hostUser.toString() + "\n🎁 **Prize:** **" + prize + "**\n\n🚨 FIRST click wins!";
+
+    const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor('#F1C40F').setTimestamp();
+    const btn = new ButtonBuilder().setCustomId('enter_giveaway').setLabel(mode === 'clicker' ? 'CLICK ME NOW! ⚡' : 'Join! 🎉').setStyle(mode === 'clicker' ? ButtonStyle.Success : ButtonStyle.Primary);
+    const msg = await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
+
+    giveawaysDatabase[msg.id] = { channelId: channel.id, endTime: endTime, prize: prize, winnerCount: winnerCount, mode: mode, title: title, hostUser: hostUser.toString(), participants: [] };
+    saveDatabase();
+    resumeGiveawayCollector(channel, msg.id, durationMs);
+}
+// ==========================================
+// PARTIE 13 : COLLECTEUR LIVE ET INHIBITION IMMÉDIATE DU STAFF AU BOUTON
+// ==========================================
+
+function resumeGiveawayCollector(channel, msgId, durationMs) {
+    const collector = channel.createMessageComponentCollector({ filter: i => i.message.id === msgId, time: durationMs });
+
+    collector.on('collect', async (btnInt) => {
+        const gw = giveawaysDatabase[msgId]; if (!gw) return;
+
+        if (btnInt.customId === 'enter_giveaway') {
+            // DIRECTIVE : Blocage du Staff au clic du bouton (Bouton bloqué s'il possède le rôle ou les droits Mod)
+            if (btnInt.member.permissions.has(PermissionFlagsBits.ModerateMembers) || btnInt.member.roles.cache.has(SECURE_STAFF_ROLE_ID)) {
+                return btnInt.reply({ content: "❌ **Access Denied.** Staff members cannot participate in community giveaways.", ephemeral: true });
+            }
+            if (blacklistDatabase.has(btnInt.user.id)) return btnInt.reply({ content: "❌ Blacklisted.", ephemeral: true });
+
+            if (gw.mode === 'clicker') {
+                gw.participants.push(btnInt.user.id);
+                initStats(btnInt.user.id); statsDatabase[btnInt.user.id].entered += 1; saveDatabase();
+                await btnInt.reply({ content: "🧇 Speed click recorded! Checking accuracy...", ephemeral: true });
+                collector.stop();
+            } else {
+                if (gw.participants.includes(btnInt.user.id)) {
+                    return btnInt.reply({ content: "⚠️ Already registered.", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("leave_gw_" + btnInt.user.id).setLabel('Leave 🚨').setStyle(ButtonStyle.Danger))], ephemeral: true });
+                }
+                gw.participants.push(btnInt.user.id);
+                initStats(btnInt.user.id); statsDatabase[btnInt.user.id].entered += 1; saveDatabase();
+
+                const upEmbed = new EmbedBuilder().setTitle(gw.title).setColor('#F1C40F').setTimestamp()
+                    .setDescription("⏳ **Ends:** <t:" + Math.floor(gw.endTime / 1000) + ":R>\n👑 **Hosted by:** " + gw.hostUser + "\n👥 **Entries:** **" + gw.participants.length + "**\n🏆 **Winners:** **" + gw.winnerCount + "**\n🎁 **Prize:** **" + gw.prize + "**");
+                await btnInt.update({ embeds: [upEmbed] });
+            }
+        }
+        handleLeaveActionCollector(btnInt, channel, msgId);
+    });
+    collector.on('end', () => { runGiveawayEnd(channel, msgId); });
+}
 
 async function handleLeaveActionCollector(btnInt, channel, msgId) {
     if (btnInt.customId.startsWith('leave_gw_')) {
         if (btnInt.user.id !== btnInt.customId.replace('leave_gw_', '')) return btnInt.reply({ content: "❌ Not your button.", ephemeral: true });
-        const gw = giveawaysDatabase[msgId]; 
-        const idx = gw.participants.indexOf(btnInt.user.id);
+        const gw = giveawaysDatabase[msgId]; const idx = gw.participants.indexOf(btnInt.user.id);
         if (idx > -1) {
             gw.participants.splice(idx, 1);
-            if (statsDatabase[btnInt.user.id] && statsDatabase[btnInt.user.id].entered > 0) {
-                statsDatabase[btnInt.user.id].entered -= 1;
-            }
+            if (statsDatabase[btnInt.user.id] && statsDatabase[btnInt.user.id].entered > 0) statsDatabase[btnInt.user.id].entered -= 1;
             
             const upEmbed = new EmbedBuilder().setTitle(gw.title).setColor('#F1C40F').setTimestamp()
                 .setDescription("⏳ **Ends:** <t:" + Math.floor(gw.endTime / 1000) + ":R>\n👑 **Hosted by:** " + gw.hostUser + "\n👥 **Entries:** **" + gw.participants.length + "**\n🏆 **Winners:** **" + gw.winnerCount + "**\n🎁 **Prize:** **" + gw.prize + "**");
             
             const originalMsg = await channel.messages.fetch(msgId).catch(() => null);
             if (originalMsg) await originalMsg.edit({ embeds: [upEmbed] });
-            await btnInt.update({ content: "👋 Successfully left.", components: [] }); 
-            saveDatabase();
+            await btnInt.update({ content: "👋 Successfully left.", components: [] }); saveDatabase();
         }
     }
 }
+// ==========================================
+// PARTIE 14 : CALCULEUR DES MODES DUELS (DOK, SOS, RPS) ET ENCLENCHEMENT LOGIN
+// ==========================================
 
 async function runGiveawayEnd(channel, msgId) {
     const gw = giveawaysDatabase[msgId]; if (!gw) return;
@@ -842,7 +951,7 @@ async function runGiveawayEnd(channel, msgId) {
         const wId = gw.participants[0]; initStats(wId); statsDatabase[wId].won += 1; saveDatabase();
         const claim = new ButtonBuilder().setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
         if (endMsg) await endMsg.edit({ embeds: [new EmbedBuilder().setTitle(gw.title).setDescription("⚡ Winner: <@" + wId + ">\n🎁 Prize: " + gw.prize).setColor('#2ECC71')] });
-        await channel.send({ content: "⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@" + wId + ">!", components: [new ActionRowBuilder().addComponents(claim)] });
+        await channel.send({ content: "⚡ 🧇 **CLICKER WINNER!** Congratulations <@" + wId + ">!", components: [new ActionRowBuilder().addComponents(claim)] });
         return;
     }
 
@@ -873,7 +982,7 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
             gameColl.stop();
             if (gInt.customId === 'dok_keep') {
                 initStats(wId); statsDatabase[wId].won += 1; saveDatabase();
-                await gInt.reply({ content: "🔒 Kept **" + prize + "**!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64))] });
+                await gInt.reply({ content: "🔒 kept **" + prize + "**!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64))] });
             } else {
                 let nPrize = prize; const match = prize.match(/\d+/);
                 if (match) { const oldN = parseInt(match[0], 10); nPrize = prize.replace(oldN, oldN * 2); } else { nPrize = "2x " + prize; }
@@ -884,9 +993,6 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
     }
     handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn);
 }
-// ==========================================
-// PARTIE 12.2 : ARBITRAGE SOS / RPS ET ENCLENCHEMENT DU LOGIN DISCORD
-// ==========================================
 
 async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn) {
     if (mode === 'sos' && winners.length >= 2) {
@@ -933,68 +1039,22 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
     }
 }
 
-async function handleGiveawayEngineSlashCommands(interaction) {
-    if (interaction.commandName === 'gcreate') {
-        const menu = new StringSelectMenuBuilder().setCustomId('select_waffel_mode').setPlaceholder('🎯 Choose a Giveaway Game Mode...')
-            .addOptions(
-                new StringSelectMenuOptionBuilder().setLabel('Normal Mode').setValue('normal').setEmoji('🎉'),
-                new StringSelectMenuOptionBuilder().setLabel('Waffle Clicker').setValue('clicker').setEmoji('⚡'),
-                new StringSelectMenuOptionBuilder().setLabel('Double Or Keep (DoK)').setValue('dok').setEmoji('🟢'),
-                new StringSelectMenuOptionBuilder().setLabel('Split Or Steal (SoS)').setValue('sos').setEmoji('⚔️'),
-                new StringSelectMenuOptionBuilder().setLabel('Rock Paper Scissors (RPS)').setValue('rps').setEmoji('🪨')
-            );
-        const row = new ActionRowBuilder().addComponents(menu);
-        const embed = new EmbedBuilder().setTitle("🧇 Waffel's Giveaway Setup Menu").setDescription('Please select a game mode below.').setColor('#F1C40F');
-        return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-    }
-
-    if (interaction.commandName === 'gend') {
-        const msgId = interaction.options.getString('message_id');
-        if (giveawaysDatabase[msgId]) {
-            await interaction.reply({ content: "🔒 Ending early...", ephemeral: true });
-            runGiveawayEnd(interaction.channel, msgId);
-        } else { return interaction.reply({ content: "❌ Not found.", ephemeral: true }); }
-        return;
-    }
-
-    if (interaction.commandName === 'greroll') {
-        const msgId = interaction.options.getString('message_id');
-        const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
-        if (!targetMsg || targetMsg.embeds.length === 0) return interaction.reply({ content: "❌ Invalid message.", ephemeral: true });
-        const originalEmbed = targetMsg.embeds[0];
-        const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Prize:\*\* (.+)/) : null;
-        let prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
-
-        let eligiblePool = [];
-        if (giveawaysDatabase[msgId] && giveawaysDatabase[msgId].participants.length > 0) {
-            eligiblePool = giveawaysDatabase[msgId].participants.filter(id => !blacklistDatabase.has(id));
-        } else {
-            const allMembers = await interaction.guild.members.fetch();
-            eligiblePool = allMembers.filter(m => !m.user.bot && !blacklistDatabase.has(m.id)).map(m => m.id);
-        }
-
-        if (eligiblePool.length === 0) return interaction.reply({ content: "❌ No eligible members found.", ephemeral: true });
-        const luckyId = eligiblePool[Math.floor(Math.random() * eligiblePool.length)];
-        const randomMember = await interaction.guild.members.fetch(luckyId);
-
-        await interaction.reply({ content: "🎲 **Rerolling...**", ephemeral: true });
-        const hostMatch = originalEmbed.description ? originalEmbed.description.match(/👑 \*\*Hosted by:\*\* (<@!?\d+>)/) : null;
-        const cleanHost = hostMatch ? hostMatch[1] : interaction.user.toString();
-
-        const claimBtn = new ButtonBuilder().setCustomId("claim_gw_" + randomMember.id + "_" + Buffer.from(prize).toString('base64') + "_" + Buffer.from(cleanHost).toString('base64')).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
-
-        initStats(randomMember.id); statsDatabase[randomMember.id].won += 1; saveDatabase();
-        await interaction.channel.send({ content: "🎲 **NEW REROLL WINNER!** Congratulations " + randomMember.toString() + ", you won **" + prize + "**!", components: [new ActionRowBuilder().addComponents(claimBtn)] });
-        return;
-    }
-
-    if (interaction.commandName === 'close') { return processTicketClosure(interaction); }
-    handleAdminBlacklistSlashCommands(interaction);
+async function processTicketClosure(interaction) {
+    const channel = interaction.channel; if (!channel) return;
+    await interaction.reply({ content: '🔒 **Ticket Scheduled for Deletion.** Purging in 10 seconds...' });
+    setTimeout(async () => { await channel.delete().catch(() => null); }, 10000);
 }
 
-// Lancement final sécurisé du bot
-if (!process.env.DISCORD_TOKEN) { 
-    console.error('❌ Missing DISCORD_TOKEN.'); 
-    process.exit(1); 
+async function handleAdminBlacklistSlashCommands(interaction) {
+    if (interaction.commandName === 'gwblacklist') {
+        const target = interaction.options.getUser('target'); blacklistDatabase.add(target.id); saveDatabase();
+        return interaction.reply({ content: "🚫 Blacklisted " + target.toString() });
+    }
+    if (interaction.commandName === 'gwunblacklist') {
+        const target = interaction.options.getUser('target'); blacklistDatabase.delete(target.id); saveDatabase();
+        return interaction.reply({ content: "✅ Unblacklisted " + target.toString() });
+    }
 }
+
+if (!process.env.DISCORD_TOKEN) { console.error('❌ Missing DISCORD_TOKEN.'); process.exit(1); }
 client.login(process.env.DISCORD_TOKEN).catch(e => console.error(e));
