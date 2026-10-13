@@ -40,7 +40,6 @@ let statsDatabase = {};
 let giveawaysDatabase = {}; 
 let ticketPanelsDatabase = {};
 const ticketData = new Map();
-
 // 💾 CHARGEMENT DE LA BASE DE DONNÉES JSON
 try {
   if (fs.existsSync(DATA_FILE)) {
@@ -78,7 +77,6 @@ function initStats(userId) {
     statsDatabase[userId] = { entered: 0, won: 0 };
   }
 }
-
 function parseDuration(str) {
   if (!str) return null;
   const match = str.match(/^(\d+)(sec|s|m|h|d)/i);
@@ -134,12 +132,16 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`🌐 HTTP KeepAlive Server running on port ${port}`);
 });
 // ==========================================
-// PARTIE 2 : ENREGISTREMENT DES COMMANDES SLASH ET EVENEMENT READY
+// PARTIE 4 : COLLECTION ET INJECTION DES COMMANDES SLASH (READY)
 // ==========================================
 
 const commands = [
-  new SlashCommandBuilder().setName('ticketsetup').setDescription('Deploy a custom interactive multi-topic ticket panel (Admin Only)'),
-  new SlashCommandBuilder().setName('ticketedit').setDescription('Modify configuration text of deployed ticket panels (Admin Only)'),
+  new SlashCommandBuilder()
+    .setName('ticketpanel')
+    .setDescription('Deploy the interactive ticket panel with a direct file upload image (Admin Only)')
+    .addStringOption(option => option.setName('title').setDescription('The title of the ticket embed menu').setRequired(true))
+    .addStringOption(option => option.setName('description').setDescription('Rules and description text (Use \n for new lines)').setRequired(true))
+    .addAttachmentOption(option => option.setName('image').setDescription('Drag and drop or upload your panel logo/image here').setRequired(false)),
   new SlashCommandBuilder().setName('gcreate').setDescription('Open the menu to create a giveaway waffle'),
   new SlashCommandBuilder().setName('gend').setDescription('Forcefully end an active giveaway instantly 🔒')
     .addStringOption(option => option.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true)),
@@ -196,7 +198,7 @@ client.once('ready', async () => {
   }
 });
 // ==========================================
-// PARTIE 3 : INTERCEPTION DES SALONS TEXTUELS ET COMMANDES !GSTART / !PING
+// PARTIE 5 : INTERCEPTION DES SALONS TEXTUELS ET COMMANDES !GSTART / !PING
 // ==========================================
 
 client.on('messageCreate', async (message) => {
@@ -247,7 +249,7 @@ client.on('messageCreate', async (message) => {
     handleCoreModCommands(message, command, args);
 });
 // ==========================================
-// PARTIE 4 : LOGIQUE DE CONFIGURATION ?UNLOCK, ?CLEAR ET ?ROLEADD
+// PARTIE 6 : ROUTINES ?UNLOCK, ?CLEAR ET ?ROLEADD
 // ==========================================
 
 async function handleCoreModCommands(message, command, args) {
@@ -306,7 +308,7 @@ async function handleCoreModCommands(message, command, args) {
     handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm);
 }
 // ==========================================
-// PARTIE 5 : ATTRIBUTION DES STRKES ET SÉCURISATION UNWARN (SR. MOD +)
+// PARTIE 7 : HISTORIQUES DES STRIKES ET PROTECTION UNWARN (SR. MOD +)
 // ==========================================
 
 async function handleAdvancedModCommands(message, command, args, banPerm, moderateMembersPerm) {
@@ -355,7 +357,7 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
     handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm);
 }
 // ==========================================
-// PARTIE 6 : LOGIQUE DE MUTELOCK ET SÉCURISATION STRICTE DU BAN (SR. MOD +)
+// PARTIE 8 : GESTION DU TIMEOUT STAFF ET LOCK DU BAN (SR. MOD +)
 // ==========================================
 
 async function handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm) {
@@ -443,7 +445,7 @@ async function handleTimeAndBanCommands(message, command, args, banPerm, moderat
     }
 }
 // ==========================================
-// PARTIE 7 : GESTION DES INTERACTIONS SLASH ET SÉCURITÉ DE LA COMMANDE RENAME
+// PARTIE 9 : INTERACTIONCREATE ET FILTRE SÉCURITÉ DE LA COMMANDE RENAME UNIVERSELLE
 // ==========================================
 
 client.on('interactionCreate', async (interaction) => {
@@ -453,7 +455,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    if (interaction.isChatInputCommand() && ['gwblacklist', 'gwunblacklist', 'statsreset', 'ticketsetup', 'ticketedit'].includes(interaction.commandName)) {
+    if (interaction.isChatInputCommand() && ['gwblacklist', 'gwunblacklist', 'statsreset', 'ticketpanel'].includes(interaction.commandName)) {
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({ content: "❌ This command is strictly restricted to **Server Administrators**.", ephemeral: true });
         }
@@ -474,7 +476,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand()) {
         const targetUser = interaction.options.getUser('target') || interaction.user;
 
-        // Commande /rename universelle réutilisable à l'infini
+        // Commande /rename universelle modifiable à l'infini partout sur le serveur
         if (interaction.commandName === 'rename') {
             const member = interaction.member;
             const isStaff = member.roles && member.roles.cache && member.roles.cache.has(SECURE_STAFF_ROLE_ID);
@@ -497,8 +499,9 @@ client.on('interactionCreate', async (interaction) => {
 
             try {
                 await channel.setName(newName);
-                return interaction.reply({ content: 'Successfully changed channel identity state to: **' + newName + '**', ephemeral: true });
+                return interaction.reply({ content: `✅ Successfully changed channel identity state to: **${newName}**`, ephemeral: true });
             } catch (err) {
+                console.error('Failed to rename channel:', err);
                 if (err.code === 50035 || err.message.toLowerCase().includes('rate limit')) {
                     return interaction.reply({
                         content: '⚠️ **Discord Rate Limit !** Vous renommez ce salon trop vite. Veuillez patienter 5 à 10 minutes avant de pouvoir changer son nom à nouveau.',
@@ -535,24 +538,40 @@ client.on('interactionCreate', async (interaction) => {
     handleComponentInteractions(interaction);
 });
 // ==========================================
-// PARTIE 8 : INITIALISATION DE L'ASSISTANT GRAPHIQUE CONFIGURATION PANELS
+// PARTIE 10 : COMMANDE UNIFIÉE /TICKETPANEL ET INTÉGRATION DE VOTRE IMAGE GLISSÉE-DÉPOSÉE
 // ==========================================
 
 async function handleUtilitySlashCommands(interaction, targetUser) {
-    // Commande exclusive /ticketsetup : Ouvre le Modal d'administration principale
-    if (interaction.commandName === 'ticketsetup') {
-        const modal = new ModalBuilder().setCustomId('setup_panel_main').setTitle('Create Ticket Panel Menu 🎫');
-        
-        const titleInput = new TextInputBuilder().setCustomId('panel_title').setLabel('Panel Embed Title').setStyle(TextInputStyle.Short).setValue("Waffel's Menu Tickets").setRequired(true);
-        const descInput = new TextInputBuilder().setCustomId('panel_desc').setLabel('Ticket Rules / Instructions Description').setStyle(TextInputStyle.Paragraph).setValue("• After opening a ticket, you have 24 hours to respond.\n• Trolling results in a 1-week timeout.\n• Do not spam mention staff!").setRequired(true);
-        const imgInput = new TextInputBuilder().setCustomId('panel_image').setLabel('Illustration Image URL (Optional)').setStyle(TextInputStyle.Short).setRequired(false);
+    if (interaction.commandName === 'ticketpanel') {
+        const title = interaction.options.getString('title', true);
+        const descRaw = interaction.options.getString('description', true);
+        const desc = descRaw.replace(/\\n/g, '\n'); 
+        const imageAttachment = interaction.options.getAttachment('image');
 
-        modal.addComponents(new ActionRowBuilder().addComponents(titleInput), new ActionRowBuilder().addComponents(descInput), new ActionRowBuilder().addComponents(imgInput));
-        return interaction.showModal(modal);
-    }
+        // Sécurité Anti-Crash Image : Utilisation de l'image glissée-déposée, sinon image transparente invisible par défaut
+        let imgUrl = imageAttachment ? imageAttachment.url : "https://imgur.com";
 
-    if (interaction.commandName === 'ticketedit') {
-        return interaction.reply({ content: "⚙️ To modify panel texts or graphics, simply re-run `/ticketsetup` in your target channel to overwrite the active embed layout.", ephemeral: true });
+        ticketPanelsDatabase[interaction.guild.id] = { title, desc, image: imgUrl };
+        saveDatabase();
+
+        const menu = new StringSelectMenuBuilder().setCustomId('select_ticket_topic').setPlaceholder('Select a topic to open a ticket...')
+            .addOptions(
+                new StringSelectMenuOptionBuilder().setLabel('Giveaway Claim').setValue('claim').setDescription('Open a channel to claim your reward').setEmoji('🎉'),
+                new StringSelectMenuOptionBuilder().setLabel('Buy/Sell Spawners').setValue('skelly').setDescription('Trade spawners with staff management').setEmoji('💀'),
+                new StringSelectMenuOptionBuilder().setLabel('Support').setValue('support').setDescription('General inquiries and assistance').setEmoji('📩')
+            );
+
+        const embed = new EmbedBuilder()
+            .setTitle(title)
+            .setDescription(desc)
+            .setImage(imgUrl)
+            .setColor('#00FF66')
+            .setFooter({ text: "Powered by Waffel Systems" });
+
+        const row = new ActionRowBuilder().addComponents(menu);
+
+        await interaction.channel.send({ embeds: [embed], components: [row] });
+        return interaction.reply({ content: "✅ **Ticket Panel deployed successfully with your uploaded image!** Direct native system active.", ephemeral: true });
     }
 
     if (interaction.commandName === 'statsreset') {
@@ -572,8 +591,8 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
 
     if (interaction.commandName === 'help') {
         const embed = new EmbedBuilder().setTitle('📋 Available Bot Commands Inventory').setColor('#F1C40F').setDescription('Here is a complete list of all features integrated:\n\n').addFields(
-                { name: '✨ Slash Commands (/)', value: '`/ticketsetup` - Configures interactive panels (Admin)\n`/ticketedit` - View panel structure instructions (Admin)\n`/close` - Closes active ticket channel\n`/help` - Displays this menu\n`/wjamal` - Sends frog GIF\n`/claimtime` - Displays rules\n`/userinfo` - Shows info\n`/serverinfo` - Displays server metrics\n`/avatar` - Avatar view\n`/infractions` - Warnings ledger\n`/gcreate` - Giveaway setup\n`/gend` - Force close\n`/greroll` - Re-roll winner\n`/gwblacklist` - Blacklist user\n`/gwunblacklist` - Unblacklist user\n`/stats` - Giveaway stats\n`/statsreset` - Wipe stats\n`/rename` - Renames channel' },
-                { name: '🛠️ Prefix Commands (?)', value: '`?warn` - Warn user\n`?unwarn` - Pop warning (Sr. Mod +)\n`?to` - Timeout member\n`?rto` - Remove timeout\n`?ban` - Ban user (Sr. Mod +)\n`?unban` - Unban profile (Sr. Mod +)\n`?lock` - Lock channel\n`?unlock` - Unlock channel\n`?clear <count>` - Purge messages\n`?roleadd @user @role` - Add role' },
+                { name: '✨ Slash Commands (/)', value: '`/ticketpanel` - Configures interactive panels with drag & drop image (Admin)\n`/close` - Closes active ticket channel\n`/help` - Displays this menu\n`/wjamal` - Sends frog GIF\n`/claimtime` - Displays rules\n`/userinfo` - Shows info\n`/serverinfo` - Displays server metrics\n`/avatar` - Avatar view\n`/infractions` - Warnings ledger\n`/gcreate` - Giveaway setup\n`/gend` - Force close\n`/greroll` - Re-roll winner\n`/gwblacklist` - Blacklist user\n`/gwunblacklist` - Unblacklist user\n`/stats` - Giveaway stats\n`/statsreset` - Wipe stats\n`/rename` - Renames channel' },
+                { name: '🛠️ Prefix Commands (?)', value: '`?warn` - Warn user\n`?unwarn` - Pop warning (Sr. Mod +)\n`?to` - Timeout member\n`?rto` - Remove timeout\n`?ban` - Ban user (Sr. Mod +)\n`?unban` - Unban profile (Sr. Mod +)\n`?lock` - Lock channel\n`?unlock` - Unlock channel\n``?clear <count>` - Purge messages\n`?roleadd @user @role` - Add role' },
                 { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway.' }
             ).setFooter({ text: "Waffel's Giveaway Utility" });
         return interaction.reply({ embeds: [embed] });
@@ -582,7 +601,7 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
     handleRestOfUtilitySlashCommands(interaction, targetUser);
 }
 // ==========================================
-// PARTIE 9 : INVENTAIRE COMMANDES D'INFORMATIONS ET REQUÊTES PUBLIQUES
+// PARTIE 11 : REQUÊTES D'INFORMATIONS PUBLIQUES ET AFFICHAGE DES COMMANDES FUN
 // ==========================================
 
 async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
@@ -616,7 +635,7 @@ async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
     }
 
     if (interaction.commandName === 'infractions') {
-        const warns = warnDatabase[targetUser.id] || [];
+        const warns = warnDatabase[targetUser.id] ||;
         const embed = new EmbedBuilder().setTitle("📜 Moderation History for " + targetUser.username).setColor(warns.length > 0 ? '#E74C3C' : '#2ECC71');
         if (warns.length === 0) { embed.setDescription("✅ This user has a perfectly clean record."); } 
         else { embed.setDescription("⚠️ Total Warnings: **" + warns.length + "**"); warns.forEach((warn, index) => { embed.addFields({ name: "Warning #" + (index + 1) + " (" + warn.date + ")", value: "**Reason:** " + warn.reason + "\n**Moderator:** " + warn.moderator }); }); }
@@ -635,47 +654,18 @@ async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
     handleGiveawayEngineSlashCommands(interaction);
 }
 // ==========================================
-// PARTIE 10 : ENREGISTREMENT ET DEPLOYEMENT DES QUESTIONNAIRES MULTIPLES
+// PARTIE 12 : INTERCEPTION DE SÉLECTION DU MENU DÉROULANT ET QUESTIONNAIRES MULTI-CHAMPS
 // ==========================================
 
 async function handleComponentInteractions(interaction) {
-    // 1. Validation de l'assistant de configuration (Création du Panel principal)
-    if (interaction.isModalSubmit() && interaction.customId === 'setup_panel_main') {
-        const title = interaction.fields.getTextInputValue('panel_title');
-        const desc = interaction.fields.getTextInputValue('panel_desc');
-        let imgUrl = interaction.fields.getTextInputValue('panel_image'); 
-
-        // Sécurité Anti-Crash Image : Si le lien ne finit pas par une extension valide, on met un pixel transparent
-        if (!imgUrl || !imgUrl.match(/\.(jpeg|jpg|gif|png)$/i)) {
-            imgUrl = "https://imgur.com"; 
-        }
-
-        ticketPanelsDatabase[interaction.guild.id] = { title, desc, image: imgUrl };
-        saveDatabase();
-
-        const menu = new StringSelectMenuBuilder().setCustomId('select_ticket_topic').setPlaceholder('Select a topic to open a ticket...')
-            .addOptions(
-                new StringSelectMenuOptionBuilder().setLabel('Giveaway Claim').setValue('claim').setDescription('Open a channel to claim your reward').setEmoji('🎉'),
-                new StringSelectMenuOptionBuilder().setLabel('Buy/Sell Spawners').setValue('skelly').setDescription('Trade spawners with staff management').setEmoji('💀'),
-                new StringSelectMenuOptionBuilder().setLabel('Support').setValue('support').setDescription('General inquiries and assistance').setEmoji('📩')
-            );
-
-        const embed = new EmbedBuilder().setTitle(title).setDescription(desc).setImage(imgUrl).setColor('#00FF66').setFooter({ text: "Powered by Waffel Systems" });
-        const row = new ActionRowBuilder().addComponents(menu);
-
-        await interaction.channel.send({ embeds: [embed], components: [row] });
-        return interaction.reply({ content: "✅ **Ticket Panel deployed successfully!** Direct native system active.", ephemeral: true });
-    }
-
-    // 2. Interception du choix dans le menu déroulant et affichage du questionnaire adapté
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_ticket_topic') {
-        const topic = interaction.values[0];
+        const topic = interaction.values;
         
         if (topic === 'claim') {
             const modal = new ModalBuilder().setCustomId('submit_ticket_channel_claim').setTitle('Giveaway Claim Verification');
             
             const q1 = new TextInputBuilder().setCustomId('claim_q1').setLabel("What's your Minecraft username?").setStyle(TextInputStyle.Short).setRequired(true);
-            const q2 = new TextInputBuilder().setCustomId('claim_q2').setLabel("How Much Did You Win?").setStyle(TextInputStyle.Short).setPlaceholder("e.g., 15m").setRequired(true);
+            const q2 = new TextInputBuilder().setCustomId('claim_q2').setLabel("How Much Did You Win?").setStyle(TextInputStyle Short).setPlaceholder("e.g., 15m").setRequired(true);
             const q3 = new TextInputBuilder().setCustomId('claim_q3').setLabel("Who hosted the giveaway?").setStyle(TextInputStyle.Short).setRequired(true);
             const q4 = new TextInputBuilder().setCustomId('claim_q4').setLabel("Send proof that you won").setStyle(TextInputStyle.Paragraph).setPlaceholder("Paste a link to your screenshot/proof here").setRequired(true);
 
@@ -709,7 +699,7 @@ async function handleComponentInteractions(interaction) {
     handleGiveawaySetupComponentsAndClaims(interaction);
 }
 // ==========================================
-// PARTIE 11 : RECEPTION DES RÉPONSES MULTIPLES ET FORMATAGE DU SALON PRIVÉ
+// PARTIE 13 : CRÉATION DU TICKET AVEC AFFICHAGE DES RÉPONSES ET ROUTAGE DES PINGS CIBLÉS
 // ==========================================
 
 async function handleGiveawaySetupComponentsAndClaims(interaction) {
@@ -721,12 +711,10 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
 
         let roleToPing = ROLE_TICKET_TEAM; 
         let topicLabel = "Support";
-        let fieldsLayout = [];
+        let fieldsLayout =;
 
-        // Construction dynamique des champs de l'embed d'après le formulaire soumis
         if (topic === 'claim') {
-            roleToPing = ROLE_TICKET_TEAM;
-            topicLabel = "Giveaway-Claim";
+            roleToPing = ROLE_TICKET_TEAM; topicLabel = "Giveaway-Claim";
             fieldsLayout = [
                 { name: "What's your Minecraft username?", value: interaction.fields.getTextInputValue('claim_q1'), inline: false },
                 { name: "How Much Did You Win?", value: interaction.fields.getTextInputValue('claim_q2'), inline: false },
@@ -735,8 +723,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
             ];
         } 
         else if (topic === 'skelly') {
-            roleToPing = ROLE_SKELLY;
-            topicLabel = "Skelly-Spawners";
+            roleToPing = ROLE_SKELLY; topicLabel = "Skelly-Spawners";
             fieldsLayout = [
                 { name: "What's your Minecraft username?", value: interaction.fields.getTextInputValue('skelly_q1'), inline: false },
                 { name: "What type of spawner?", value: interaction.fields.getTextInputValue('skelly_q2'), inline: false },
@@ -746,8 +733,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
             ];
         } 
         else if (topic === 'support') {
-            roleToPing = ROLE_TICKET_TEAM;
-            topicLabel = "General-Support";
+            roleToPing = ROLE_TICKET_TEAM; topicLabel = "General-Support";
             fieldsLayout = [
                 { name: "Please describe your issue and wait for a response.", value: interaction.fields.getTextInputValue('support_q1'), inline: false }
             ];
@@ -771,7 +757,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
 
             const embed = new EmbedBuilder()
                 .setTitle(`🎫 Department: ${topicLabel}`)
-                .setDescription(`Welcome ${interaction.user.toString()}, our team has been notified. Please find your summary answers below :`)
+                .setDescription(`Welcome ${interaction.user.toString()}, our team has been notified. Please find your summary answers below:`)
                 .setColor('#2F3136')
                 .addFields(fieldsLayout)
                 .setTimestamp()
@@ -790,7 +776,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
     }
 
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_waffel_mode') {
-        const mode = interaction.values[0]; 
+        const mode = interaction.values; 
         const modal = new ModalBuilder().setCustomId("modal_waffel_" + mode).setTitle("Setup: " + mode.toUpperCase());
         const pInput = new TextInputBuilder().setCustomId('input_prize').setLabel("Prize:").setStyle(TextInputStyle.Short).setRequired(true);
         const dInput = new TextInputBuilder().setCustomId('input_duration').setLabel("Duration (e.g. 5h, 10m):").setStyle(TextInputStyle.Short).setRequired(true);
@@ -818,7 +804,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
     handleOriginalGiveawayLogicProcessing(interaction);
 }
 // ==========================================
-// PARTIE 12 : SÉCURISATION DU ROUTAGE ANTI-CRASH ET ENGIN DE LANCEMENT
+// PARTIE 14.1 : SÉCURISATION DU ROUTAGE ANTI-CRASH ET GESTIONNAIRE DE BOUTONS
 // ==========================================
 
 async function handleOriginalGiveawayLogicProcessing(interaction) {
@@ -873,7 +859,7 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
     resumeGiveawayCollector(channel, msg.id, durationMs);
 }
 // ==========================================
-// PARTIE 13 : COLLECTEUR LIVE ET INHIBITION IMMÉDIATE DU STAFF AU BOUTON
+// PARTIE 14.2 : COLLECTEUR LIVE, BLOCAGE STAFF ET PROCÉDURE DE TIRAGE
 // ==========================================
 
 function resumeGiveawayCollector(channel, msgId, durationMs) {
@@ -883,7 +869,6 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
         const gw = giveawaysDatabase[msgId]; if (!gw) return;
 
         if (btnInt.customId === 'enter_giveaway') {
-            // DIRECTIVE : Blocage du Staff au clic du bouton (Bouton bloqué s'il possède le rôle ou les droits Mod)
             if (btnInt.member.permissions.has(PermissionFlagsBits.ModerateMembers) || btnInt.member.roles.cache.has(SECURE_STAFF_ROLE_ID)) {
                 return btnInt.reply({ content: "❌ **Access Denied.** Staff members cannot participate in community giveaways.", ephemeral: true });
             }
@@ -892,7 +877,7 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
             if (gw.mode === 'clicker') {
                 gw.participants.push(btnInt.user.id);
                 initStats(btnInt.user.id); statsDatabase[btnInt.user.id].entered += 1; saveDatabase();
-                await btnInt.reply({ content: "🧇 Speed click recorded! Checking accuracy...", ephemeral: true });
+                await btnInt.reply({ content: "... Speed click recorded! Checking accuracy...", ephemeral: true });
                 collector.stop();
             } else {
                 if (gw.participants.includes(btnInt.user.id)) {
@@ -928,9 +913,6 @@ async function handleLeaveActionCollector(btnInt, channel, msgId) {
         }
     }
 }
-// ==========================================
-// PARTIE 14 : CALCULEUR DES MODES DUELS (DOK, SOS, RPS) ET ENCLENCHEMENT LOGIN
-// ==========================================
 
 async function runGiveawayEnd(channel, msgId) {
     const gw = giveawaysDatabase[msgId]; if (!gw) return;
@@ -951,7 +933,7 @@ async function runGiveawayEnd(channel, msgId) {
         const wId = gw.participants[0]; initStats(wId); statsDatabase[wId].won += 1; saveDatabase();
         const claim = new ButtonBuilder().setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
         if (endMsg) await endMsg.edit({ embeds: [new EmbedBuilder().setTitle(gw.title).setDescription("⚡ Winner: <@" + wId + ">\n🎁 Prize: " + gw.prize).setColor('#2ECC71')] });
-        await channel.send({ content: "⚡ 🧇 **CLICKER WINNER!** Congratulations <@" + wId + ">!", components: [new ActionRowBuilder().addComponents(claim)] });
+        await channel.send({ content: "⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@" + wId + ">!", components: [new ActionRowBuilder().addComponents(claim)] });
         return;
     }
 
@@ -967,6 +949,9 @@ async function runGiveawayEnd(channel, msgId) {
     }
     handleMiniGamesArbitration(channel, winners, gw.prize, gw.winnerCount, gw.mode, gw.hostUser, rawPrizeB64, rawHostB64);
 }
+// ==========================================
+// PARTIE 14.31 : DUELS COMPÉTITIFS ET LOGIQUE DU DOUBLE OR KEEP
+// ==========================================
 
 async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, mode, originHost, rawPrizeB64, rawHostB64) {
     if (mode === 'clicker' || mode === 'normal') return;
@@ -982,7 +967,7 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
             gameColl.stop();
             if (gInt.customId === 'dok_keep') {
                 initStats(wId); statsDatabase[wId].won += 1; saveDatabase();
-                await gInt.reply({ content: "🔒 kept **" + prize + "**!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64))] });
+                await gInt.reply({ content: "🔒 Kept **" + prize + "**!", components: [new ActionRowBuilder().addComponents(claimBtn.setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64))] });
             } else {
                 let nPrize = prize; const match = prize.match(/\d+/);
                 if (match) { const oldN = parseInt(match[0], 10); nPrize = prize.replace(oldN, oldN * 2); } else { nPrize = "2x " + prize; }
@@ -993,6 +978,9 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
     }
     handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn);
 }
+// ==========================================
+// PARTIE 14.32 : LOGIQUE DE DUEL SOS / RPS, SLASH GIVEAWAYS ET AUTHENTIFICATION CLIENT
+// ==========================================
 
 async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn) {
     if (mode === 'sos' && winners.length >= 2) {
@@ -1039,22 +1027,65 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
     }
 }
 
-async function processTicketClosure(interaction) {
-    const channel = interaction.channel; if (!channel) return;
-    await interaction.reply({ content: '🔒 **Ticket Scheduled for Deletion.** Purging in 10 seconds...' });
-    setTimeout(async () => { await channel.delete().catch(() => null); }, 10000);
+async function handleGiveawayEngineSlashCommands(interaction) {
+    if (interaction.commandName === 'gcreate') {
+        const menu = new StringSelectMenuBuilder().setCustomId('select_waffel_mode').setPlaceholder('🎯 Choose a Giveaway Game Mode...')
+            .addOptions(
+                new StringSelectMenuOptionBuilder().setLabel('Normal Mode').setValue('normal').setEmoji('🎉'),
+                new StringSelectMenuOptionBuilder().setLabel('Waffle Clicker').setValue('clicker').setEmoji('⚡'),
+                new StringSelectMenuOptionBuilder().setLabel('Double Or Keep (DoK)').setValue('dok').setEmoji('🟢'),
+                new StringSelectMenuOptionBuilder().setLabel('Split Or Steal (SoS)').setValue('sos').setEmoji('⚔️'),
+                new StringSelectMenuOptionBuilder().setLabel('Rock Paper Scissors (RPS)').setValue('rps').setEmoji('🪨')
+            );
+        const row = new ActionRowBuilder().addComponents(menu);
+        const embed = new EmbedBuilder().setTitle("🧇 Waffel's Giveaway Setup Menu").setDescription('Please select a game mode below.').setColor('#F1C40F');
+        return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    }
+
+    if (interaction.commandName === 'gend') {
+        const msgId = interaction.options.getString('message_id');
+        if (giveawaysDatabase[msgId]) {
+            await interaction.reply({ content: "🔒 Ending early...", ephemeral: true });
+            runGiveawayEnd(interaction.channel, msgId);
+        } else { return interaction.reply({ content: "❌ Not found.", ephemeral: true }); }
+        return;
+    }
+
+    if (interaction.commandName === 'greroll') {
+        const msgId = interaction.options.getString('message_id');
+        const targetMsg = await interaction.channel.messages.fetch(msgId).catch(() => null);
+        if (!targetMsg || targetMsg.embeds.length === 0) return interaction.reply({ content: "❌ Invalid message.", ephemeral: true });
+        const originalEmbed = targetMsg.embeds[0];
+        const prizeMatch = originalEmbed.description ? originalEmbed.description.match(/🎁 \*\*Prize:\*\* (.+)/) : null;
+        let prize = prizeMatch ? prizeMatch[1] : "Unknown Prize";
+
+        let eligiblePool = [];
+        if (giveawaysDatabase[msgId] && giveawaysDatabase[msgId].participants.length > 0) {
+            eligiblePool = giveawaysDatabase[msgId].participants.filter(id => !blacklistDatabase.has(id));
+        } else {
+            const allMembers = await interaction.guild.members.fetch();
+            eligiblePool = allMembers.filter(m => !m.user.bot && !blacklistDatabase.has(m.id)).map(m => m.id);
+        }
+
+        if (eligiblePool.length === 0) return interaction.reply({ content: "❌ No eligible members found.", ephemeral: true });
+        const luckyId = eligiblePool[Math.floor(Math.random() * eligiblePool.length)];
+        const randomMember = await interaction.guild.members.fetch(luckyId);
+
+        await interaction.reply({ content: "🎲 **Rerolling...**", ephemeral: true });
+        const hostMatch = originalEmbed.description ? originalEmbed.description.match(/👑 \*\*Hosted by:\*\* (<@!?\d+>)/) : null;
+        const cleanHost = hostMatch ? hostMatch[1] : interaction.user.toString();
+
+        const claimBtn = new ButtonBuilder().setCustomId("claim_gw_" + randomMember.id + "_" + Buffer.from(prize).toString('base64') + "_" + Buffer.from(cleanHost).toString('base64')).setLabel('Claim 🟢').setStyle(ButtonStyle.Success);
+        
+        initStats(randomMember.id); statsDatabase[randomMember.id].won += 1; saveDatabase();
+        await interaction.channel.send({ content: "🎲 **NEW REROLL WINNER!** Congratulations " + randomMember.toString() + ", you won **" + prize + "**!", components: [new ActionRowBuilder().addComponents(claimBtn)] });
+        return;
+    }
+
+    if (interaction.commandName === 'close') { return processTicketClosure(interaction); }
+    handleAdminBlacklistSlashCommands(interaction);
 }
 
-async function handleAdminBlacklistSlashCommands(interaction) {
-    if (interaction.commandName === 'gwblacklist') {
-        const target = interaction.options.getUser('target'); blacklistDatabase.add(target.id); saveDatabase();
-        return interaction.reply({ content: "🚫 Blacklisted " + target.toString() });
-    }
-    if (interaction.commandName === 'gwunblacklist') {
-        const target = interaction.options.getUser('target'); blacklistDatabase.delete(target.id); saveDatabase();
-        return interaction.reply({ content: "✅ Unblacklisted " + target.toString() });
-    }
-}
-
+// Lancement final sécurisé
 if (!process.env.DISCORD_TOKEN) { console.error('❌ Missing DISCORD_TOKEN.'); process.exit(1); }
 client.login(process.env.DISCORD_TOKEN).catch(e => console.error(e));
