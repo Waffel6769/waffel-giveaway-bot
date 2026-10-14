@@ -31,6 +31,7 @@ const port = process.env.PORT || 3000;
 const SECURE_CATEGORY_ID = process.env.TICKET_CATEGORY_ID || "1443450226647240796";
 const SPAWNER_TICKET_CATEGORY_ID = "1490609388136697917";
 const SUPPORT_TICKET_CATEGORY_ID = "1490609565308420137";
+const TICKET_LOG_CHANNEL_ID = "1559312973577584834";
 const SECURE_STAFF_ROLE_ID = process.env.SECURE_STAFF_ROLE_ID || "1423749610395930707";
 const ROLE_TICKET_TEAM = "1497812876046499870";
 const ROLE_SKELLY = "1497989066900373504";
@@ -42,6 +43,7 @@ let statsDatabase = {};
 let giveawaysDatabase = {};
 let ticketPanelsDatabase = {};
 const ticketData = new Map();
+const closingTickets = new Set();
 
 // Chargement de la base de données JSON
 try {
@@ -69,6 +71,7 @@ function saveDatabase() {
       ticketPanels: ticketPanelsDatabase,
       blacklist: Array.from(blacklistDatabase)
     };
+
     fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave, null, 4), 'utf8');
   } catch (error) {
     console.error("❌ Erreur d'écriture de la base de données :", error);
@@ -179,7 +182,11 @@ const commands = [
   new SlashCommandBuilder().setName('rename').setDescription('Quickly alter the current channel name')
     .addStringOption(option => option.setName('name').setDescription('New channel name strip').setRequired(true)),
   new SlashCommandBuilder().setName('ticket').setDescription('Open a general support ticket (Deprecated)'),
-  new SlashCommandBuilder().setName('close').setDescription('Close this ticket')
+  new SlashCommandBuilder().setName('close').setDescription('Close this ticket'),
+  new SlashCommandBuilder().setName('add').setDescription('Give a member access to this ticket')
+    .addUserOption(option => option.setName('member').setDescription('Member to add to this ticket').setRequired(true)),
+  new SlashCommandBuilder().setName('remove').setDescription('Remove a member from this ticket')
+    .addUserOption(option => option.setName('member').setDescription('Member to remove from this ticket').setRequired(true))
 ].map(cmd => cmd.toJSON());
 
 client.once('ready', async () => {
@@ -310,6 +317,7 @@ async function handleCoreModCommands(message, command, args) {
     }
 
     const amount = parseInt(args[0], 10);
+
     if (isNaN(amount) || amount < 1 || amount > 100) {
       return message.channel.send({
         embeds: [createPrefixEmbed('Warning', "⚠️ Please provide a number between 1 and 100.")]
@@ -570,7 +578,7 @@ async function handleTimeAndBanCommands(message, command, args, banPerm, moderat
 }
 
 client.on('interactionCreate', async (interaction) => {
-  // Les boutons Quitter sont traités ici, pas par le collecteur du message public.
+  // Traite le bouton Quitter directement pour éviter le délai d'expiration.
   if (interaction.isButton() && interaction.customId.startsWith('leave_gw_')) {
     return handleGiveawayLeaveButton(interaction);
   }
@@ -1025,6 +1033,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
         name: ensureTicketChannelName(`🎫-${topicLabel}-${interaction.user.username}`),
         type: ChannelType.GuildText,
         parent: ticketCategoryId,
+        topic: `ticket-owner:${interaction.user.id}; ticket-type:${topic}`,
         permissionOverwrites: [
           { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
           { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
@@ -1034,7 +1043,11 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
         ]
       });
 
-      ticketData.set(channel.id, { ownerId: interaction.user.id, createdAt: Date.now() });
+      ticketData.set(channel.id, {
+        ownerId: interaction.user.id,
+        createdAt: Date.now(),
+        topic
+      });
 
       const embed = new EmbedBuilder()
         .setTitle(`🎫 Department: ${topicLabel}`)
@@ -1056,6 +1069,8 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
         embeds: [embed],
         components: [closeRow]
       });
+
+      await logTicketOpened(channel, interaction.user, topicLabel);
 
       return interaction.editReply({
         content: `✅ **Ticket created successfully!** Please go to your salon: ${channel.toString()}`
@@ -1117,6 +1132,7 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
     let winners = parseInt(interaction.fields.getTextInputValue('input_winners'), 10) || 1;
 
     const durationMs = parseDuration(durationStr);
+
     if (!durationMs || durationMs <= 0) {
       return interaction.reply({ content: "❌ Invalid duration format!", ephemeral: true });
     }
@@ -1146,6 +1162,7 @@ async function handleOriginalGiveawayLogicProcessing(interaction) {
         name: ensureTicketChannelName(`claim-${interaction.user.username}`),
         type: ChannelType.GuildText,
         parent: SECURE_CATEGORY_ID,
+        topic: `ticket-owner:${interaction.user.id}; ticket-type:claim`,
         permissionOverwrites: [
           { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
           { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
@@ -1154,7 +1171,11 @@ async function handleOriginalGiveawayLogicProcessing(interaction) {
         ]
       });
 
-      ticketData.set(channel.id, { ownerId: interaction.user.id, createdAt: Date.now() });
+      ticketData.set(channel.id, {
+        ownerId: interaction.user.id,
+        createdAt: Date.now(),
+        topic: 'claim'
+      });
 
       const embed = new EmbedBuilder()
         .setTitle('🎫 Giveaway Claim')
@@ -1175,9 +1196,10 @@ async function handleOriginalGiveawayLogicProcessing(interaction) {
         components: [closeRow]
       });
 
+      await logTicketOpened(channel, interaction.user, 'Giveaway-Claim');
       return interaction.editReply({ content: `✅ Claim ticket created: ${channel}` });
     } catch (error) {
-      console.error('Could not create giveaway claim ticket:', error);
+      console.error('Could not create the claim ticket:', error);
       return interaction.editReply({
         content: '❌ Could not create the claim ticket. Check the ticket category and bot permissions.'
       });
@@ -1214,20 +1236,34 @@ async function handleButtonsEngineProcessing(interaction) {
 
   if (interaction.isButton() && interaction.customId === 'close_giveaway_ticket') {
     const member = interaction.member;
+    const channel = interaction.channel;
     const isStaff =
       member.roles.cache.has(SECURE_STAFF_ROLE_ID) ||
       member.roles.cache.has(ROLE_TICKET_TEAM) ||
       member.permissions.has(PermissionFlagsBits.Administrator);
+    const isOwner = getTicketOwnerId(channel) === interaction.user.id;
 
-    if (!isStaff) {
-      return interaction.reply({ content: "❌ Staff access only.", ephemeral: true });
+    if (!isStaff && !isOwner) {
+      return interaction.reply({
+        content: "❌ Only the ticket owner or staff can close this ticket.",
+        ephemeral: true
+      });
     }
 
-    await interaction.reply({ content: "🔒 Purging channel and removing ticket logs in 5 seconds..." });
+    if (!isTicketChannel(channel)) {
+      return interaction.reply({ content: "❌ This channel is not recognized as a ticket.", ephemeral: true });
+    }
 
-    setTimeout(async () => {
-      await interaction.channel.delete().catch(() => null);
-    }, 5000);
+    await interaction.reply({
+      content: "🔒 Exporting the transcript and closing this ticket…",
+      ephemeral: true
+    });
+
+    const closed = await closeTicketChannel(channel, interaction.user);
+
+    if (!closed) {
+      await interaction.editReply("❌ I could not send the transcript to the log channel. The ticket has been left open.");
+    }
 
     return;
   }
@@ -1285,7 +1321,7 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
     if (!gw) return;
 
     if (btnInt.customId === 'enter_giveaway') {
-      // Seul le rôle de l'équipe tickets ne peut pas participer.
+      // Seul le rôle de l’équipe tickets ne peut pas participer.
       if (btnInt.member.roles.cache.has(ROLE_TICKET_TEAM)) {
         return btnInt.reply({
           content: "❌ Members with the ticket team role cannot participate in giveaways.",
@@ -1397,7 +1433,7 @@ async function handleGiveawayLeaveButton(interaction) {
 
   saveDatabase();
 
-  // Répond tout de suite au bouton pour éviter le délai d'interaction Discord.
+  // Répond immédiatement au bouton pour éviter le délai d’interaction Discord.
   await interaction.update({
     content: "👋 You left the giveaway.",
     components: []
@@ -1626,7 +1662,15 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
     });
   }
 
-  handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn);
+  handleAdvancedMiniGamesArbitration(
+    channel,
+    winners,
+    prize,
+    rawPrizeB64,
+    rawHostB64,
+    mode,
+    claimBtn
+  );
 }
 
 async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn) {
@@ -1898,7 +1942,204 @@ async function handleGiveawayEngineSlashCommands(interaction) {
     return processTicketClosure(interaction);
   }
 
+  if (interaction.commandName === 'add' || interaction.commandName === 'remove') {
+    const channel = interaction.channel;
+    const member = interaction.member;
+
+    const isStaff = Boolean(
+      member?.roles?.cache?.has(SECURE_STAFF_ROLE_ID) ||
+      member?.roles?.cache?.has(ROLE_TICKET_TEAM) ||
+      member?.permissions?.has(PermissionFlagsBits.Administrator)
+    );
+
+    if (!channel || !isTicketChannel(channel)) {
+      return interaction.reply({ content: '❌ Use this command inside a ticket.', ephemeral: true });
+    }
+
+    if (!isStaff) {
+      return interaction.reply({ content: '❌ Only staff can manage ticket access.', ephemeral: true });
+    }
+
+    const targetUser = interaction.options.getUser('member', true);
+    const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+
+    if (!targetMember) {
+      return interaction.reply({ content: '❌ That user is not a member of this server.', ephemeral: true });
+    }
+
+    const ticketOwnerId = getTicketOwnerId(channel);
+
+    if (interaction.commandName === 'remove' && targetUser.id === ticketOwnerId) {
+      return interaction.reply({
+        content: '❌ You cannot remove the ticket owner from their own ticket.',
+        ephemeral: true
+      });
+    }
+
+    try {
+      if (interaction.commandName === 'add') {
+        await channel.permissionOverwrites.edit(targetUser.id, {
+          ViewChannel: true,
+          SendMessages: true,
+          ReadMessageHistory: true,
+          AttachFiles: true
+        });
+
+        return interaction.reply({
+          content: `✅ ${targetUser} can now access this ticket.`,
+          ephemeral: true
+        });
+      }
+
+      await channel.permissionOverwrites.edit(targetUser.id, {
+        ViewChannel: false,
+        SendMessages: false,
+        ReadMessageHistory: false
+      });
+
+      return interaction.reply({
+        content: `✅ ${targetUser} has been removed from this ticket.`,
+        ephemeral: true
+      });
+    } catch (error) {
+      console.error(`Failed to ${interaction.commandName} a member to/from a ticket:`, error);
+      return interaction.reply({
+        content: '❌ I could not update that member’s ticket permissions. Check my Manage Channels permission.',
+        ephemeral: true
+      });
+    }
+  }
+
   handleAdminBlacklistSlashCommands(interaction);
+}
+
+function isTicketChannel(channel) {
+  if (!channel || !channel.guild) return false;
+
+  const knownCategories = new Set([
+    SECURE_CATEGORY_ID,
+    SPAWNER_TICKET_CATEGORY_ID,
+    SUPPORT_TICKET_CATEGORY_ID
+  ]);
+
+  return ticketData.has(channel.id) ||
+    knownCategories.has(channel.parentId) ||
+    Boolean(channel.topic && channel.topic.includes('ticket-owner:'));
+}
+
+function getTicketOwnerId(channel) {
+  const cachedOwnerId = ticketData.get(channel.id)?.ownerId;
+  if (cachedOwnerId) return cachedOwnerId;
+
+  const topicMatch = channel.topic?.match(/ticket-owner:(\d+)/);
+  return topicMatch ? topicMatch[1] : null;
+}
+
+async function logTicketOpened(channel, owner, ticketType) {
+  try {
+    const logChannel = await client.channels.fetch(TICKET_LOG_CHANNEL_ID).catch(() => null);
+
+    if (!logChannel || !logChannel.isTextBased()) {
+      console.error(`Ticket log channel ${TICKET_LOG_CHANNEL_ID} is unavailable.`);
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle('🎫 Ticket opened')
+      .setColor('#2ECC71')
+      .addFields(
+        { name: 'Ticket', value: `${channel} (${channel.name})`, inline: false },
+        { name: 'Opened by', value: `${owner} (${owner.id})`, inline: true },
+        { name: 'Type', value: ticketType, inline: true }
+      )
+      .setTimestamp();
+
+    await logChannel.send({ embeds: [embed] });
+  } catch (error) {
+    console.error('Could not write the ticket-open log:', error);
+  }
+}
+
+async function createTicketTranscript(channel) {
+  const messages = [];
+  let before;
+  const maxMessages = 1000;
+
+  while (messages.length < maxMessages) {
+    const options = { limit: Math.min(100, maxMessages - messages.length) };
+    if (before) options.before = before;
+
+    const batch = await channel.messages.fetch(options);
+    if (batch.size === 0) break;
+
+    messages.push(...batch.values());
+    before = batch.last().id;
+
+    if (batch.size < 100) break;
+  }
+
+  messages.reverse();
+
+  const lines = messages.map(message => {
+    const timestamp = new Date(message.createdTimestamp).toISOString();
+    const author = `${message.author.tag} (${message.author.id})`;
+    const content = message.content || '[no text content]';
+    const attachments = [...message.attachments.values()].map(file => file.url);
+    const embeds = message.embeds.map(embed => embed.url).filter(Boolean);
+
+    return [
+      `[${timestamp}] ${author}: ${content}`,
+      ...attachments.map(url => `  Attachment: ${url}`),
+      ...embeds.map(url => `  Embed: ${url}`)
+    ].join('\n');
+  });
+
+  const header =
+    `Transcript for #${channel.name} (${channel.id})\n` +
+    `Exported: ${new Date().toISOString()}\n` +
+    `Messages exported: ${messages.length}${messages.length >= maxMessages ? ' (capped at 1000)' : ''}\n\n`;
+
+  return Buffer.from(header + lines.join('\n\n'), 'utf8');
+}
+
+async function closeTicketChannel(channel, actor) {
+  if (closingTickets.has(channel.id)) return false;
+  closingTickets.add(channel.id);
+
+  try {
+    const transcript = await createTicketTranscript(channel);
+    const logChannel = await client.channels.fetch(TICKET_LOG_CHANNEL_ID).catch(() => null);
+
+    if (!logChannel || !logChannel.isTextBased()) {
+      console.error(`Ticket log channel ${TICKET_LOG_CHANNEL_ID} is unavailable; ticket left open.`);
+      return false;
+    }
+
+    const ownerId = getTicketOwnerId(channel);
+    const embed = new EmbedBuilder()
+      .setTitle('🔒 Ticket closed')
+      .setColor('#E74C3C')
+      .addFields(
+        { name: 'Ticket', value: `#${channel.name} (${channel.id})`, inline: false },
+        { name: 'Closed by', value: `${actor} (${actor.id})`, inline: true },
+        { name: 'Ticket owner', value: ownerId ? `<@${ownerId}> (${ownerId})` : 'Unknown', inline: true }
+      )
+      .setTimestamp();
+
+    await logChannel.send({
+      embeds: [embed],
+      files: [{ attachment: transcript, name: `ticket-${channel.id}-transcript.txt` }]
+    });
+
+    await channel.delete(`Ticket closed by ${actor.tag || actor.id}`);
+    ticketData.delete(channel.id);
+    return true;
+  } catch (error) {
+    console.error('Failed to export or close ticket:', error);
+    return false;
+  } finally {
+    closingTickets.delete(channel.id);
+  }
 }
 
 async function processTicketClosure(interaction) {
@@ -1912,16 +2153,20 @@ async function processTicketClosure(interaction) {
     });
   }
 
+  if (!isTicketChannel(channel)) {
+    return interaction.reply({
+      content: '❌ This channel is not recognized as a ticket.',
+      ephemeral: true
+    });
+  }
+
   const isStaff = Boolean(
     member?.roles?.cache?.has(SECURE_STAFF_ROLE_ID) ||
     member?.roles?.cache?.has(ROLE_TICKET_TEAM) ||
     member?.permissions?.has(PermissionFlagsBits.Administrator)
   );
 
-  const explicitOverwrite = channel.permissionOverwrites?.cache?.get(interaction.user.id);
-  const isOwner =
-    ticketData.get(channel.id)?.ownerId === interaction.user.id ||
-    Boolean(explicitOverwrite?.allow?.has(PermissionFlagsBits.ViewChannel));
+  const isOwner = getTicketOwnerId(channel) === interaction.user.id;
 
   if (!isStaff && !isOwner) {
     return interaction.reply({
@@ -1931,13 +2176,17 @@ async function processTicketClosure(interaction) {
   }
 
   await interaction.reply({
-    content: '🔒 This ticket will close in 5 seconds.',
+    content: '🔒 Exporting the transcript and closing this ticket…',
     ephemeral: true
   });
 
-  setTimeout(() => {
-    channel.delete('Ticket closed with /close').catch(() => null);
-  }, 5000);
+  const closed = await closeTicketChannel(channel, interaction.user);
+
+  if (!closed) {
+    await interaction.editReply(
+      '❌ I could not send the transcript to the log channel. The ticket has been left open.'
+    );
+  }
 }
 
 if (!process.env.DISCORD_TOKEN) {
