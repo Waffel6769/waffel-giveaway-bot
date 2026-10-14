@@ -503,12 +503,10 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
     if (command === 'rto') {
       try {
         await target.timeout(null);
-
         const logEmbed = createPrefixEmbed('Timeout Removal Completed', 'Voice and text restrictions revoked.', [
           { name: '👤 Target Member', value: target.toString(), inline: true },
           { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
         ]);
-
         return message.channel.send({ embeds: [logEmbed] });
       } catch (e) {
         return message.channel.send({
@@ -529,14 +527,12 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 
     try {
       await target.timeout(finalDuration, reason);
-
       const logEmbed = createPrefixEmbed('Timeout Execution Completed', 'Action successfully authorized on target parameters.', [
         { name: '👤 Target Member', value: target.toString(), inline: true },
         { name: '⏱️ Total Duration', value: (timeArg || '1m'), inline: true },
         { name: '📄 Stated Reason', value: reason, inline: false },
         { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
       ]);
-
       return message.channel.send({ embeds: [logEmbed] });
     } catch (err) {
       return message.channel.send({
@@ -558,7 +554,7 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 
     if (!target) {
       return message.channel.send({
-        embeds: [createPrefixEmbed('Warning', "⚠️ Usage: `?ban @member [reason]`")]
+        embeds: [createPrefixEmbed('Warning', "❌ Usage: `?ban @member [reason]`")]
       }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
     }
 
@@ -566,13 +562,11 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 
     try {
       await target.ban({ reason });
-
       const logEmbed = createPrefixEmbed('Banishment Sequence Executed', 'Profile permanently terminated from the server.', [
         { name: '👤 Target Entity', value: target.user.tag, inline: true },
         { name: '📄 Stated Reason', value: reason, inline: false },
         { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
       ]);
-
       return message.channel.send({ embeds: [logEmbed] });
     } catch (e) {
       return message.channel.send({
@@ -594,18 +588,16 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 
     if (!targetId) {
       return message.channel.send({
-        embeds: [createPrefixEmbed('Warning', "⚠️ Usage: `?unban [User_ID]`")]
+        embeds: [createPrefixEmbed('Warning', "❌ Usage: `?unban [User_ID]`")]
       }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
     }
 
     try {
       await message.guild.members.unban(targetId);
-
       const logEmbed = createPrefixEmbed('Banishment Revoked', 'Identity cleared for server re-entry.', [
         { name: '🆔 Cleared ID', value: targetId, inline: true },
         { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
       ]);
-
       return message.channel.send({ embeds: [logEmbed] });
     } catch (e) {
       return message.channel.send({
@@ -616,7 +608,6 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 }
 
 client.on('interactionCreate', async (interaction) => {
-  // Traite le bouton Quitter directement pour éviter le délai d'expiration.
   if (interaction.isButton() && interaction.customId.startsWith('leave_gw_')) {
     return handleGiveawayLeaveButton(interaction);
   }
@@ -670,20 +661,25 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.commandName === 'leaderboard' || interaction.commandName === 'lb') {
-      const metric = interaction.options.getString('type', true);
-      const isWins = metric === 'won';
+      await interaction.deferReply();
 
-      const ranking = Object.entries(statsDatabase)
-        .map(([userId, stats]) => ({
-          userId,
-          score: Math.max(0, Number(stats?.[metric]) || 0)
-        }))
-        .filter(entry => entry.score > 0)
-        .sort((a, b) => b.score - a.score || a.userId.localeCompare(b.userId))
-        .slice(0, 10);
+      try {
+        const metric = interaction.options.getString('type', true);
+        const isWins = metric === 'won';
 
-      const resolvedRanking = await Promise.all(
-        ranking.map(async (entry, index) => {
+        const ranking = Object.entries(statsDatabase)
+          .map(([userId, stats]) => ({
+            userId,
+            score: Math.max(0, Number(stats?.[metric]) || 0)
+          }))
+          .filter(entry => entry.score > 0)
+          .sort((a, b) => b.score - a.score || a.userId.localeCompare(b.userId))
+          .slice(0, 10);
+
+        const maxScore = ranking[0]?.score || 1;
+        const medals = ['🥇', '🥈', '🥉'];
+
+        const resolvedRanking = await Promise.all(ranking.map(async (entry, index) => {
           const member = interaction.guild
             ? await interaction.guild.members.fetch(entry.userId).catch(() => null)
             : null;
@@ -696,44 +692,48 @@ client.on('interactionCreate', async (interaction) => {
             `Unknown user (${entry.userId})`;
 
           const safeName = displayName.replace(/[\\*_~`|]/g, '\\$&');
-          const maxScore = ranking[0]?.score || 1;
           const filledBlocks = Math.max(1, Math.round((entry.score / maxScore) * 10));
           const bar = '🟨'.repeat(filledBlocks) + '⬛'.repeat(10 - filledBlocks);
-          const medals = ['🥇', '🥈', '🥉'];
           const rankLabel = medals[index] || `**#${index + 1}**`;
 
           return {
-            ...entry,
             avatarUrl:
               member?.displayAvatarURL({ size: 128 }) ||
               user?.displayAvatarURL({ size: 128 }) ||
               null,
             row: `${rankLabel} **${safeName}**  ·  **${entry.score}**\n> ${bar}`
           };
-        })
-      );
+        }));
 
-      const description = resolvedRanking.length
-        ? resolvedRanking.map(entry => entry.row).join('\n\n')
-        : 'No giveaway statistics have been recorded yet.';
+        const description = resolvedRanking.length
+          ? resolvedRanking.map(entry => entry.row).join('\n\n')
+          : 'No giveaway statistics have been recorded yet.';
 
-      const embed = new EmbedBuilder()
-        .setTitle(isWins ? '🏆 GIVEAWAY WINS' : '🎟️ GIVEAWAY ENTRIES')
-        .setColor(0xFFD43B)
-        .setDescription(description)
-        .setFooter({
-          text: `Top 10 · ${isWins ? 'Giveaways won' : 'Giveaways entered'}`
-        })
-        .setTimestamp();
+        const embed = new EmbedBuilder()
+          .setTitle(isWins ? '🏆 GIVEAWAY WINS' : '🎟️ GIVEAWAY ENTRIES')
+          .setColor(0xFFD43B)
+          .setDescription(description)
+          .setFooter({
+            text: `Top 10 · ${isWins ? 'Giveaways won' : 'Giveaways entered'}`
+          })
+          .setTimestamp();
 
-      if (resolvedRanking[0]?.avatarUrl) {
-        embed.setThumbnail(resolvedRanking[0].avatarUrl);
+        if (resolvedRanking[0]?.avatarUrl) {
+          embed.setThumbnail(resolvedRanking[0].avatarUrl);
+        }
+
+        return interaction.editReply({
+          embeds: [embed],
+          allowedMentions: { parse: [] }
+        });
+      } catch (error) {
+        console.error('Leaderboard command error:', error);
+
+        return interaction.editReply({
+          content: '❌ Impossible d’afficher le classement pour le moment.',
+          embeds: []
+        }).catch(() => null);
       }
-
-      return interaction.reply({
-        embeds: [embed],
-        allowedMentions: { parse: [] }
-      });
     }
 
     const targetUser = interaction.options.getUser('target') || interaction.user;
@@ -887,7 +887,9 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
   }
 
   handleRestOfUtilitySlashCommands(interaction, targetUser);
-}async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
+}
+
+async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
   if (interaction.commandName === 'claimtime') {
     const embed = new EmbedBuilder()
       .setTitle('🎉 Giveaway Info')
