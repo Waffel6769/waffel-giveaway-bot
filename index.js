@@ -29,6 +29,8 @@ const port = process.env.PORT || 3000;
 
 // Configurations globales et identifiants de sécurité
 const SECURE_CATEGORY_ID = process.env.TICKET_CATEGORY_ID || "1443450226647240796";
+const SPAWNER_TICKET_CATEGORY_ID = "1490609388136697917";
+const SUPPORT_TICKET_CATEGORY_ID = "1490609565308420137";
 const SECURE_STAFF_ROLE_ID = process.env.SECURE_STAFF_ROLE_ID || "1423749610395930707";
 const ROLE_TICKET_TEAM = "1497812876046499870";
 const ROLE_SKELLY = "1497989066900373504";
@@ -81,6 +83,7 @@ function initStats(userId) {
 
 function parseDuration(str) {
   if (!str) return null;
+
   const match = str.match(/^(\d+)(sec|s|m|h|d)/i);
   if (!match) return null;
 
@@ -196,7 +199,7 @@ client.once('ready', async () => {
     console.error(error);
   }
 
-  // Les giveaways actifs sont repris après le redémarrage
+  // Reprend les giveaways actifs après un redémarrage
   for (const msgId in giveawaysDatabase) {
     const gw = giveawaysDatabase[msgId];
     if (gw.ended) continue;
@@ -516,7 +519,7 @@ async function handleTimeAndBanCommands(message, command, args, banPerm, moderat
     const reason = args.slice(1).join(' ') || "No reason provided";
 
     try {
-      await target.ban({ reason: reason });
+      await target.ban({ reason });
 
       const logEmbed = createPrefixEmbed('Banishment Sequence Executed', 'Profile permanently terminated from the server.', [
         { name: '👤 Target Entity', value: target.user.tag, inline: true },
@@ -567,6 +570,11 @@ async function handleTimeAndBanCommands(message, command, args, banPerm, moderat
 }
 
 client.on('interactionCreate', async (interaction) => {
+  // Les boutons Quitter sont traités ici, pas par le collecteur du message public.
+  if (interaction.isButton() && interaction.customId.startsWith('leave_gw_')) {
+    return handleGiveawayLeaveButton(interaction);
+  }
+
   if (interaction.isChatInputCommand() && ['gcreate', 'gend', 'greroll'].includes(interaction.commandName)) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
       return interaction.reply({
@@ -699,7 +707,9 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
     ticketPanelsDatabase[interaction.guild.id] = { title, desc, image: imgUrl };
     saveDatabase();
 
-    const menu = new StringSelectMenuBuilder().setCustomId('select_ticket_topic').setPlaceholder('Select a topic to open a ticket...')
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId('select_ticket_topic')
+      .setPlaceholder('Select a topic to open a ticket...')
       .addOptions(
         new StringSelectMenuOptionBuilder().setLabel('Giveaway Claim').setValue('claim').setDescription('Open a channel to claim your reward').setEmoji('🎉'),
         new StringSelectMenuOptionBuilder().setLabel('Buy/Sell Spawners').setValue('skelly').setDescription('Trade spawners with staff management').setEmoji('💀'),
@@ -1005,10 +1015,16 @@ async function handleGiveawaySetupComponentsAndClaims(interaction) {
     }
 
     try {
+      const ticketCategoryId = topic === 'skelly'
+        ? SPAWNER_TICKET_CATEGORY_ID
+        : topic === 'support'
+          ? SUPPORT_TICKET_CATEGORY_ID
+          : SECURE_CATEGORY_ID;
+
       const channel = await guild.channels.create({
         name: ensureTicketChannelName(`🎫-${topicLabel}-${interaction.user.username}`),
         type: ChannelType.GuildText,
-        parent: SECURE_CATEGORY_ID,
+        parent: ticketCategoryId,
         permissionOverwrites: [
           { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
           { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
@@ -1208,6 +1224,7 @@ async function handleButtonsEngineProcessing(interaction) {
     }
 
     await interaction.reply({ content: "🔒 Purging channel and removing ticket logs in 5 seconds..." });
+
     setTimeout(async () => {
       await interaction.channel.delete().catch(() => null);
     }, 5000);
@@ -1244,11 +1261,11 @@ async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode
 
   giveawaysDatabase[msg.id] = {
     channelId: channel.id,
-    endTime: endTime,
-    prize: prize,
-    winnerCount: winnerCount,
-    mode: mode,
-    title: title,
+    endTime,
+    prize,
+    winnerCount,
+    mode,
+    title,
     hostUser: hostUser.toString(),
     participants: []
   };
@@ -1268,12 +1285,10 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
     if (!gw) return;
 
     if (btnInt.customId === 'enter_giveaway') {
-      if (
-        btnInt.member.permissions.has(PermissionFlagsBits.ModerateMembers) ||
-        btnInt.member.roles.cache.has(SECURE_STAFF_ROLE_ID)
-      ) {
+      // Seul le rôle de l'équipe tickets ne peut pas participer.
+      if (btnInt.member.roles.cache.has(ROLE_TICKET_TEAM)) {
         return btnInt.reply({
-          content: "❌ **Access Denied.** Staff members cannot participate in community giveaways.",
+          content: "❌ Members with the ticket team role cannot participate in giveaways.",
           ephemeral: true
         });
       }
@@ -1296,16 +1311,14 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
         collector.stop();
       } else {
         if (gw.participants.includes(btnInt.user.id)) {
+          const leaveButton = new ButtonBuilder()
+            .setCustomId(`leave_gw_${msgId}_${btnInt.user.id}`)
+            .setLabel('Leave 🚨')
+            .setStyle(ButtonStyle.Danger);
+
           return btnInt.reply({
-            content: "⚠️ Already registered.",
-            components: [
-              new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                  .setCustomId("leave_gw_" + btnInt.user.id)
-                  .setLabel('Leave 🚨')
-                  .setStyle(ButtonStyle.Danger)
-              )
-            ],
+            content: "⚠️ Already registered. Use this button if you want to leave.",
+            components: [new ActionRowBuilder().addComponents(leaveButton)],
             ephemeral: true
           });
         }
@@ -1328,10 +1341,19 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
           );
 
         await btnInt.update({ embeds: [upEmbed] });
+
+        const leaveButton = new ButtonBuilder()
+          .setCustomId(`leave_gw_${msgId}_${btnInt.user.id}`)
+          .setLabel('Leave Giveaway 🚨')
+          .setStyle(ButtonStyle.Danger);
+
+        await btnInt.followUp({
+          content: 'You joined the giveaway. Use this button if you change your mind:',
+          components: [new ActionRowBuilder().addComponents(leaveButton)],
+          ephemeral: true
+        });
       }
     }
-
-    handleLeaveActionCollector(btnInt, channel, msgId);
   });
 
   collector.on('end', () => {
@@ -1339,41 +1361,67 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
   });
 }
 
-async function handleLeaveActionCollector(btnInt, channel, msgId) {
-  if (btnInt.customId.startsWith('leave_gw_')) {
-    if (btnInt.user.id !== btnInt.customId.replace('leave_gw_', '')) {
-      return btnInt.reply({ content: "❌ Not your button.", ephemeral: true });
-    }
+async function handleGiveawayLeaveButton(interaction) {
+  const [, , msgId, expectedUserId] = interaction.customId.split('_');
 
-    const gw = giveawaysDatabase[msgId];
-    const idx = gw.participants.indexOf(btnInt.user.id);
-
-    if (idx > -1) {
-      gw.participants.splice(idx, 1);
-
-      if (statsDatabase[btnInt.user.id] && statsDatabase[btnInt.user.id].entered > 0) {
-        statsDatabase[btnInt.user.id].entered -= 1;
-      }
-
-      const upEmbed = new EmbedBuilder()
-        .setTitle(gw.title)
-        .setColor('#F1C40F')
-        .setTimestamp()
-        .setDescription(
-          "⏳ **Ends:** <t:" + Math.floor(gw.endTime / 1000) + ":R>\n" +
-          "👑 **Hosted by:** " + gw.hostUser + "\n" +
-          "👥 **Entries:** **" + gw.participants.length + "**\n" +
-          "🏆 **Winners:** **" + gw.winnerCount + "**\n" +
-          "🎁 **Prize:** **" + gw.prize + "**"
-        );
-
-      const originalMsg = await channel.messages.fetch(msgId).catch(() => null);
-      if (originalMsg) await originalMsg.edit({ embeds: [upEmbed] });
-
-      await btnInt.update({ content: "👋 Successfully left.", components: [] });
-      saveDatabase();
-    }
+  if (interaction.user.id !== expectedUserId) {
+    return interaction.reply({
+      content: "❌ This leave button belongs to another participant.",
+      ephemeral: true
+    });
   }
+
+  const gw = giveawaysDatabase[msgId];
+
+  if (!gw || gw.ended) {
+    return interaction.reply({
+      content: "❌ This giveaway is no longer active.",
+      ephemeral: true
+    });
+  }
+
+  const participantIndex = (gw.participants || []).indexOf(interaction.user.id);
+
+  if (participantIndex === -1) {
+    return interaction.reply({
+      content: "ℹ️ You are not currently entered in this giveaway.",
+      ephemeral: true
+    });
+  }
+
+  gw.participants.splice(participantIndex, 1);
+
+  if (statsDatabase[interaction.user.id] && statsDatabase[interaction.user.id].entered > 0) {
+    statsDatabase[interaction.user.id].entered -= 1;
+  }
+
+  saveDatabase();
+
+  // Répond tout de suite au bouton pour éviter le délai d'interaction Discord.
+  await interaction.update({
+    content: "👋 You left the giveaway.",
+    components: []
+  });
+
+  const channel = await client.channels.fetch(gw.channelId).catch(() => null);
+  if (!channel || !channel.isTextBased()) return;
+
+  const originalMsg = await channel.messages.fetch(msgId).catch(() => null);
+  if (!originalMsg) return;
+
+  const updatedEmbed = new EmbedBuilder()
+    .setTitle(gw.title)
+    .setColor('#F1C40F')
+    .setTimestamp()
+    .setDescription(
+      "⏳ **Ends:** <t:" + Math.floor(gw.endTime / 1000) + ":R>\n" +
+      "👑 **Hosted by:** " + gw.hostUser + "\n" +
+      "👥 **Entries:** **" + gw.participants.length + "**\n" +
+      "🏆 **Winners:** **" + gw.winnerCount + "**\n" +
+      "🎁 **Prize:** **" + gw.prize + "**"
+    );
+
+  await originalMsg.edit({ embeds: [updatedEmbed] }).catch(() => null);
 }
 
 async function runGiveawayEnd(channel, msgId) {
@@ -1585,6 +1633,7 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
   if (mode === 'sos' && winners.length >= 2) {
     const p1 = winners[0];
     const p2 = winners[1];
+
     const sosMsg = await channel.send({
       content: "⚔️ <@" + p1 + "> vs <@" + p2 + ">! **Split** 🟢 or **Steal** 🔴!",
       components: [
@@ -1822,6 +1871,7 @@ async function handleGiveawayEngineSlashCommands(interaction) {
 
     const prize = gw.prize || 'Unknown Prize';
     const cleanHost = gw.hostUser || interaction.user.toString();
+
     const claimBtn = new ButtonBuilder()
       .setCustomId(
         "claim_gw_" + randomMember.id + "_" +
