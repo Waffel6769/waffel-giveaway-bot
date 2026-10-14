@@ -692,8 +692,6 @@ client.on('interactionCreate', async (interaction) => {
             `Unknown user (${entry.userId})`;
 
           const safeName = displayName.replace(/[\\*_~`|]/g, '\\$&');
-          const filledBlocks = Math.max(1, Math.round((entry.score / maxScore) * 10));
-          const bar = '🟨'.repeat(filledBlocks) + '⬛'.repeat(10 - filledBlocks);
           const rankLabel = medals[index] || `**#${index + 1}**`;
 
           return {
@@ -701,7 +699,7 @@ client.on('interactionCreate', async (interaction) => {
               member?.displayAvatarURL({ size: 128 }) ||
               user?.displayAvatarURL({ size: 128 }) ||
               null,
-            row: `${rankLabel} **${safeName}**  ·  **${entry.score}**\n> ${bar}`
+            row: `${rankLabel} **${safeName}**  ·  **${entry.score}**`
           };
         }));
 
@@ -826,7 +824,7 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
     const desc = descRaw.replace(/\\n/g, '\n');
     const imageAttachment = interaction.options.getAttachment('image');
 
-    let imgUrl = imageAttachment ? imageAttachment.url : "https://imgur.com";
+    const imgUrl = imageAttachment ? imageAttachment.url : "https://imgur.com";
 
     ticketPanelsDatabase[interaction.guild.id] = { title, desc, image: imgUrl };
     saveDatabase();
