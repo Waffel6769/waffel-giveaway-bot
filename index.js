@@ -40,6 +40,7 @@ const GUILD_ID = process.env.GUILD_ID || null;
 let warnDatabase = {};
 let blacklistDatabase = new Set();
 let statsDatabase = {};
+let afkDatabase = {};
 let giveawaysDatabase = {};
 let ticketPanelsDatabase = {};
 const ticketData = new Map();
@@ -52,6 +53,7 @@ try {
     const parsed = JSON.parse(rawData);
     warnDatabase = parsed.warns || {};
     statsDatabase = parsed.stats || {};
+    afkDatabase = parsed.afk || {};
     giveawaysDatabase = parsed.giveaways || {};
     ticketPanelsDatabase = parsed.ticketPanels || {};
     blacklistDatabase = new Set(parsed.blacklist || []);
@@ -67,6 +69,7 @@ function saveDatabase() {
     const dataToSave = {
       warns: warnDatabase,
       stats: statsDatabase,
+      afk: afkDatabase,
       giveaways: giveawaysDatabase,
       ticketPanels: ticketPanelsDatabase,
       blacklist: Array.from(blacklistDatabase)
@@ -177,6 +180,20 @@ const commands = [
   new SlashCommandBuilder().setName('claimtime').setDescription('Display official giveaway claim times and rules 🕐'),
   new SlashCommandBuilder().setName('stats').setDescription('Display your personal giveaway statistics or those of another user 📊')
     .addUserOption(option => option.setName('target').setDescription('The user to view stats for').setRequired(false)),
+  new SlashCommandBuilder().setName('leaderboard').setDescription('Show the giveaway leaderboard')
+    .addStringOption(option => option.setName('type').setDescription('Choose the leaderboard category').setRequired(true)
+      .addChoices(
+        { name: 'Most giveaways entered', value: 'entered' },
+        { name: 'Most giveaways won', value: 'won' }
+      )),
+  new SlashCommandBuilder().setName('lb').setDescription('Alias for /leaderboard')
+    .addStringOption(option => option.setName('type').setDescription('Choose the leaderboard category').setRequired(true)
+      .addChoices(
+        { name: 'Most giveaways entered', value: 'entered' },
+        { name: 'Most giveaways won', value: 'won' }
+      )),
+  new SlashCommandBuilder().setName('afk').setDescription('Set or update your AFK status')
+    .addStringOption(option => option.setName('reason').setDescription('Why you are AFK').setRequired(false).setMaxLength(200)),
   new SlashCommandBuilder().setName('statsreset').setDescription('Reset all giveaway statistics for a specific user 🔄')
     .addUserOption(option => option.setName('target').setDescription('The user whose statistics will be wiped clean').setRequired(true)),
   new SlashCommandBuilder().setName('rename').setDescription('Quickly alter the current channel name')
@@ -230,6 +247,29 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
+
+  if (afkDatabase[message.author.id]) {
+    delete afkDatabase[message.author.id];
+    saveDatabase();
+    await message.reply({
+      content: '👋 Your AFK status has been removed.',
+      allowedMentions: { repliedUser: false }
+    }).catch(() => {});
+  }
+
+  const mentionedAfkUsers = [...message.mentions.users.values()]
+    .filter(user => afkDatabase[user.id]);
+
+  if (mentionedAfkUsers.length > 0) {
+    const notices = mentionedAfkUsers
+      .map(user => `🌙 **${user.username}** is AFK: ${afkDatabase[user.id].reason}`)
+      .join('\n');
+
+    await message.reply({
+      content: notices,
+      allowedMentions: { parse: [] }
+    }).catch(() => {});
+  }
 
   if (message.content === '!ping') {
     return message.reply('Pong!');
@@ -442,9 +482,7 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
   }
 
   handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm);
-}
-
-async function handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm) {
+}async function handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm) {
   if (command === 'to' || command === 'rto') {
     setTimeout(() => message.delete().catch(() => null), 200);
 
@@ -520,7 +558,7 @@ async function handleTimeAndBanCommands(message, command, args, banPerm, moderat
 
     if (!target) {
       return message.channel.send({
-        embeds: [createPrefixEmbed('Warning', "❌ Usage: `?ban @member [reason]`")]
+        embeds: [createPrefixEmbed('Warning', "⚠️ Usage: `?ban @member [reason]`")]
       }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
     }
 
@@ -556,7 +594,7 @@ async function handleTimeAndBanCommands(message, command, args, banPerm, moderat
 
     if (!targetId) {
       return message.channel.send({
-        embeds: [createPrefixEmbed('Warning', "❌ Usage: `?unban [User_ID]`")]
+        embeds: [createPrefixEmbed('Warning', "⚠️ Usage: `?unban [User_ID]`")]
       }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
     }
 
@@ -620,6 +658,42 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === 'afk') {
+      const reason = interaction.options.getString('reason') || 'No reason provided.';
+      afkDatabase[interaction.user.id] = { reason, since: Date.now() };
+      saveDatabase();
+
+      return interaction.reply({
+        content: `🌙 AFK status enabled: ${reason}`,
+        ephemeral: true
+      });
+    }
+
+    if (interaction.commandName === 'leaderboard' || interaction.commandName === 'lb') {
+      const metric = interaction.options.getString('type', true);
+      const isWins = metric === 'won';
+      const ranking = Object.entries(statsDatabase)
+        .map(([userId, stats]) => ({
+          userId,
+          score: Math.max(0, Number(stats?.[metric]) || 0)
+        }))
+        .filter(entry => entry.score > 0)
+        .sort((a, b) => b.score - a.score || a.userId.localeCompare(b.userId))
+        .slice(0, 10);
+
+      const description = ranking.length
+        ? ranking.map((entry, index) => `**${index + 1}.** <@${entry.userId}> — **${entry.score}**`).join('\n')
+        : 'No giveaway statistics have been recorded yet.';
+
+      const embed = new EmbedBuilder()
+        .setTitle(isWins ? '🏆 Giveaway Wins Leaderboard' : '🎟️ Giveaway Entries Leaderboard')
+        .setColor('#F1C40F')
+        .setDescription(description)
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
+    }
+
     const targetUser = interaction.options.getUser('target') || interaction.user;
 
     if (interaction.commandName === 'rename') {
@@ -982,9 +1056,7 @@ async function handleComponentInteractions(interaction) {
   }
 
   handleGiveawaySetupComponentsAndClaims(interaction);
-}
-
-async function handleGiveawaySetupComponentsAndClaims(interaction) {
+}async function handleGiveawaySetupComponentsAndClaims(interaction) {
   if (interaction.isModalSubmit() && interaction.customId.startsWith('submit_ticket_channel_')) {
     const topic = interaction.customId.replace('submit_ticket_channel_', '');
     const guild = interaction.guild;
@@ -1397,9 +1469,7 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
   collector.on('end', () => {
     runGiveawayEnd(channel, msgId);
   });
-}
-
-async function handleGiveawayLeaveButton(interaction) {
+}async function handleGiveawayLeaveButton(interaction) {
   const [, , msgId, expectedUserId] = interaction.customId.split('_');
 
   if (interaction.user.id !== expectedUserId) {
@@ -1435,7 +1505,7 @@ async function handleGiveawayLeaveButton(interaction) {
 
   saveDatabase();
 
-  // Répond immédiatement au bouton pour éviter le délai d’interaction Discord.
+  // Répond immédiatement au bouton pour éviter le délai d'expiration.
   await interaction.update({
     content: "👋 You left the giveaway.",
     components: []
@@ -1825,9 +1895,7 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
       }
     });
   }
-}
-
-async function handleGiveawayEngineSlashCommands(interaction) {
+}async function handleGiveawayEngineSlashCommands(interaction) {
   if (interaction.commandName === 'gcreate') {
     const menu = new StringSelectMenuBuilder()
       .setCustomId('select_waffel_mode')
