@@ -458,7 +458,7 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 
     if (!target) {
       return message.channel.send({
-        embeds: [createPrefixEmbed('Warning', "❌ Usage: `?warn @member [reason]`")]
+        embeds: [createPrefixEmbed('Warning', "⚠️ Usage: `?warn @member [reason]`")]
       }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
     }
 
@@ -672,6 +672,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.commandName === 'leaderboard' || interaction.commandName === 'lb') {
       const metric = interaction.options.getString('type', true);
       const isWins = metric === 'won';
+
       const ranking = Object.entries(statsDatabase)
         .map(([userId, stats]) => ({
           userId,
@@ -681,17 +682,58 @@ client.on('interactionCreate', async (interaction) => {
         .sort((a, b) => b.score - a.score || a.userId.localeCompare(b.userId))
         .slice(0, 10);
 
-      const description = ranking.length
-        ? ranking.map((entry, index) => `**${index + 1}.** <@${entry.userId}> — **${entry.score}**`).join('\n')
+      const resolvedRanking = await Promise.all(
+        ranking.map(async (entry, index) => {
+          const member = interaction.guild
+            ? await interaction.guild.members.fetch(entry.userId).catch(() => null)
+            : null;
+
+          const user = member?.user || await client.users.fetch(entry.userId).catch(() => null);
+          const displayName =
+            member?.displayName ||
+            user?.globalName ||
+            user?.username ||
+            `Unknown user (${entry.userId})`;
+
+          const safeName = displayName.replace(/[\\*_~`|]/g, '\\$&');
+          const maxScore = ranking[0]?.score || 1;
+          const filledBlocks = Math.max(1, Math.round((entry.score / maxScore) * 10));
+          const bar = '🟨'.repeat(filledBlocks) + '⬛'.repeat(10 - filledBlocks);
+          const medals = ['🥇', '🥈', '🥉'];
+          const rankLabel = medals[index] || `**#${index + 1}**`;
+
+          return {
+            ...entry,
+            avatarUrl:
+              member?.displayAvatarURL({ size: 128 }) ||
+              user?.displayAvatarURL({ size: 128 }) ||
+              null,
+            row: `${rankLabel} **${safeName}**  ·  **${entry.score}**\n> ${bar}`
+          };
+        })
+      );
+
+      const description = resolvedRanking.length
+        ? resolvedRanking.map(entry => entry.row).join('\n\n')
         : 'No giveaway statistics have been recorded yet.';
 
       const embed = new EmbedBuilder()
-        .setTitle(isWins ? '🏆 Giveaway Wins Leaderboard' : '🎟️ Giveaway Entries Leaderboard')
-        .setColor('#F1C40F')
+        .setTitle(isWins ? '🏆 GIVEAWAY WINS' : '🎟️ GIVEAWAY ENTRIES')
+        .setColor(0xFFD43B)
         .setDescription(description)
+        .setFooter({
+          text: `Top 10 · ${isWins ? 'Giveaways won' : 'Giveaways entered'}`
+        })
         .setTimestamp();
 
-      return interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
+      if (resolvedRanking[0]?.avatarUrl) {
+        embed.setThumbnail(resolvedRanking[0].avatarUrl);
+      }
+
+      return interaction.reply({
+        embeds: [embed],
+        allowedMentions: { parse: [] }
+      });
     }
 
     const targetUser = interaction.options.getUser('target') || interaction.user;
