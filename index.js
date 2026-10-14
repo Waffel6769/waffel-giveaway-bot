@@ -22,8 +22,10 @@ const {
 
 const express = require('express');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const DATA_FILE = './database.json';
+const FORCED_WINNERS_FILE = './forced-winners.json';
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -42,6 +44,7 @@ let blacklistDatabase = new Set();
 let statsDatabase = {};
 let afkDatabase = {};
 let giveawaysDatabase = {};
+let claimAuthorizations = {};
 let ticketPanelsDatabase = {};
 const ticketData = new Map();
 const closingTickets = new Set();
@@ -55,6 +58,7 @@ try {
     statsDatabase = parsed.stats || {};
     afkDatabase = parsed.afk || {};
     giveawaysDatabase = parsed.giveaways || {};
+    claimAuthorizations = parsed.claimAuthorizations || {};
     ticketPanelsDatabase = parsed.ticketPanels || {};
     blacklistDatabase = new Set(parsed.blacklist || []);
     console.log("💾 Base de données chargée avec succès depuis database.json");
@@ -71,6 +75,7 @@ function saveDatabase() {
       stats: statsDatabase,
       afk: afkDatabase,
       giveaways: giveawaysDatabase,
+      claimAuthorizations,
       ticketPanels: ticketPanelsDatabase,
       blacklist: Array.from(blacklistDatabase)
     };
@@ -78,6 +83,58 @@ function saveDatabase() {
     fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave, null, 4), 'utf8');
   } catch (error) {
     console.error("❌ Erreur d'écriture de la base de données :", error);
+  }
+}
+
+function createClaimButtonRow(winnerIds, prize, hostUser) {
+  const token = crypto.randomBytes(12).toString('hex');
+  claimAuthorizations[token] = {
+    winnerIds: [...new Set(winnerIds)],
+    prize,
+    hostUser,
+    claimedBy: []
+  };
+  saveDatabase();
+
+  const claimButton = new ButtonBuilder()
+    .setCustomId(`claim_gw_${token}`)
+    .setLabel('Claim 🟢')
+    .setStyle(ButtonStyle.Success);
+
+  return new ActionRowBuilder().addComponents(claimButton);
+}
+
+function getForcedWinnerIds(giveawayId, giveaway) {
+  if (!fs.existsSync(FORCED_WINNERS_FILE)) return [];
+
+  try {
+    const settings = JSON.parse(fs.readFileSync(FORCED_WINNERS_FILE, 'utf8'));
+    const configured = settings[giveawayId];
+    if (configured === undefined) return [];
+
+    const requestedIds = [...new Set((Array.isArray(configured) ? configured : [configured])
+      .filter(id => typeof id === 'string')
+      .map(id => id.trim()))];
+
+    if (
+      requestedIds.length === 0 ||
+      requestedIds.length > giveaway.winnerCount ||
+      requestedIds.some(id => !/^\d{17,20}$/.test(id))
+    ) {
+      console.warn(`⚠️ Invalid forced-winner configuration for giveaway ${giveawayId}; using a random draw.`);
+      return [];
+    }
+
+    const participants = new Set(giveaway.participants || []);
+    if (requestedIds.some(id => !participants.has(id) || blacklistDatabase.has(id))) {
+      console.warn(`⚠️ Forced winner for giveaway ${giveawayId} did not enter or is blacklisted; using a random draw.`);
+      return [];
+    }
+
+    return requestedIds;
+  } catch (error) {
+    console.error(`❌ Could not read ${FORCED_WINNERS_FILE}; using a random draw:`, error);
+    return [];
   }
 }
 
@@ -194,6 +251,7 @@ const commands = [
       )),
   new SlashCommandBuilder().setName('afk').setDescription('Set or update your AFK status')
     .addStringOption(option => option.setName('reason').setDescription('Why you are AFK').setRequired(false).setMaxLength(200)),
+  new SlashCommandBuilder().setName('unafk').setDescription('Remove your AFK status'),
   new SlashCommandBuilder().setName('statsreset').setDescription('Reset all giveaway statistics for a specific user 🔄')
     .addUserOption(option => option.setName('target').setDescription('The user whose statistics will be wiped clean').setRequired(true)),
   new SlashCommandBuilder().setName('rename').setDescription('Quickly alter the current channel name')
@@ -247,15 +305,6 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
-
-  if (afkDatabase[message.author.id]) {
-    delete afkDatabase[message.author.id];
-    saveDatabase();
-    await message.reply({
-      content: '👋 Your AFK status has been removed.',
-      allowedMentions: { repliedUser: false }
-    }).catch(() => {});
-  }
 
   const mentionedAfkUsers = [...message.mentions.users.values()]
     .filter(user => afkDatabase[user.id]);
@@ -325,6 +374,39 @@ client.on('messageCreate', async (message) => {
 });
 
 async function handleCoreModCommands(message, command, args) {
+  if (command === 'slowmode') {
+    setTimeout(() => message.delete().catch(() => null), 200);
+
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+      return message.channel.send({
+        embeds: [createPrefixEmbed('Error Status', "❌ You don't have permission to manage this channel.")]
+      }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+    }
+
+    const seconds = Number(args[0]);
+    if (!Number.isInteger(seconds) || seconds < 0 || seconds > 21600) {
+      return message.channel.send({
+        embeds: [createPrefixEmbed('Warning', '⚠️ Usage: `?slowmode <0-21600>` (0 disables slowmode).')]
+      }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+    }
+
+    try {
+      await message.channel.setRateLimitPerUser(seconds, `Changed by ${message.author.tag}`);
+      const status = seconds === 0 ? 'disabled' : `set to **${seconds} second(s)**`;
+      return message.channel.send({
+        embeds: [createPrefixEmbed('Slowmode Updated', `⏱️ Slowmode ${status}.`, [
+          { name: '📍 Channel', value: message.channel.toString(), inline: true },
+          { name: '🛡️ Changed by', value: message.author.toString(), inline: true }
+        ])]
+      });
+    } catch (error) {
+      console.error('Failed to update slowmode:', error);
+      return message.channel.send({
+        embeds: [createPrefixEmbed('Error Status', '❌ Could not change slowmode. Check the bot permission and channel type.')]
+      }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
+    }
+  }
+
   if (command === 'unlock') {
     setTimeout(() => message.delete().catch(() => null), 200);
 
@@ -372,7 +454,9 @@ async function handleCoreModCommands(message, command, args) {
     ]);
 
     return message.channel.send({ embeds: [logEmbed] }).then(m => setTimeout(() => m.delete().catch(() => null), 4000));
-  }  if (command === 'roleadd') {
+  }
+
+  if (command === 'roleadd' || command === 'roleremove') {
     setTimeout(() => message.delete().catch(() => null), 200);
 
     if (!manageRolesPerm) {
@@ -386,14 +470,22 @@ async function handleCoreModCommands(message, command, args) {
 
     if (!target || !role) {
       return message.channel.send({
-        embeds: [createPrefixEmbed('Warning', "⚠️ Usage: `?roleadd @member @role`")]
+        embeds: [createPrefixEmbed('Warning', `⚠️ Usage: \`?${command} @member @role\``)]
       }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
     }
 
     try {
-      await target.roles.add(role);
+      if (command === 'roleadd') {
+        await target.roles.add(role);
+      } else {
+        await target.roles.remove(role);
+      }
 
-      const logEmbed = createPrefixEmbed('Role Assignment Successful', 'Role applied securely to the targeted member.', [
+      const action = command === 'roleadd' ? 'Role Assignment Successful' : 'Role Removal Successful';
+      const description = command === 'roleadd'
+        ? 'Role applied securely to the targeted member.'
+        : 'Role removed from the targeted member.';
+      const logEmbed = createPrefixEmbed(action, description, [
         { name: '👤 Target Member', value: target.toString(), inline: true },
         { name: '📌 Assigned Badge', value: role.toString(), inline: true },
         { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
@@ -401,8 +493,9 @@ async function handleCoreModCommands(message, command, args) {
 
       return message.channel.send({ embeds: [logEmbed] });
     } catch (e) {
+      const action = command === 'roleadd' ? 'add' : 'remove';
       return message.channel.send({
-        embeds: [createPrefixEmbed('Error Status', "❌ Unable to add role. Check role hierarchy.")]
+        embeds: [createPrefixEmbed('Error Status', `❌ Unable to ${action} role. Check role hierarchy and bot permissions.`)]
       }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
     }
   }
@@ -458,7 +551,7 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 
     if (!target) {
       return message.channel.send({
-        embeds: [createPrefixEmbed('Warning', "⚠️ Usage: `?warn @member [reason]`")]
+        embeds: [createPrefixEmbed('Warning', "❌ Usage: `?warn @member [reason]`")]
       }).then(m => setTimeout(() => m.delete().catch(() => null), 5000));
     }
 
@@ -482,7 +575,9 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
   }
 
   handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm);
-}async function handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm) {
+}
+
+async function handleTimeAndBanCommands(message, command, args, banPerm, moderateMembersPerm) {
   if (command === 'to' || command === 'rto') {
     setTimeout(() => message.delete().catch(() => null), 200);
 
@@ -503,10 +598,12 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
     if (command === 'rto') {
       try {
         await target.timeout(null);
+
         const logEmbed = createPrefixEmbed('Timeout Removal Completed', 'Voice and text restrictions revoked.', [
           { name: '👤 Target Member', value: target.toString(), inline: true },
           { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
         ]);
+
         return message.channel.send({ embeds: [logEmbed] });
       } catch (e) {
         return message.channel.send({
@@ -527,12 +624,14 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 
     try {
       await target.timeout(finalDuration, reason);
+
       const logEmbed = createPrefixEmbed('Timeout Execution Completed', 'Action successfully authorized on target parameters.', [
         { name: '👤 Target Member', value: target.toString(), inline: true },
         { name: '⏱️ Total Duration', value: (timeArg || '1m'), inline: true },
         { name: '📄 Stated Reason', value: reason, inline: false },
         { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
       ]);
+
       return message.channel.send({ embeds: [logEmbed] });
     } catch (err) {
       return message.channel.send({
@@ -562,11 +661,13 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 
     try {
       await target.ban({ reason });
+
       const logEmbed = createPrefixEmbed('Banishment Sequence Executed', 'Profile permanently terminated from the server.', [
         { name: '👤 Target Entity', value: target.user.tag, inline: true },
         { name: '📄 Stated Reason', value: reason, inline: false },
         { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
       ]);
+
       return message.channel.send({ embeds: [logEmbed] });
     } catch (e) {
       return message.channel.send({
@@ -594,10 +695,12 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 
     try {
       await message.guild.members.unban(targetId);
+
       const logEmbed = createPrefixEmbed('Banishment Revoked', 'Identity cleared for server re-entry.', [
         { name: '🆔 Cleared ID', value: targetId, inline: true },
         { name: '🛡️ Responsible Exec', value: message.author.toString(), inline: true }
       ]);
+
       return message.channel.send({ embeds: [logEmbed] });
     } catch (e) {
       return message.channel.send({
@@ -608,6 +711,7 @@ async function handleAdvancedModCommands(message, command, args, banPerm, modera
 }
 
 client.on('interactionCreate', async (interaction) => {
+  // Traite le bouton Quitter directement pour éviter le délai d'expiration.
   if (interaction.isButton() && interaction.customId.startsWith('leave_gw_')) {
     return handleGiveawayLeaveButton(interaction);
   }
@@ -660,78 +764,72 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    if (interaction.commandName === 'leaderboard' || interaction.commandName === 'lb') {
-      await interaction.deferReply();
-
-      try {
-        const metric = interaction.options.getString('type', true);
-        const isWins = metric === 'won';
-
-        const ranking = Object.entries(statsDatabase)
-          .map(([userId, stats]) => ({
-            userId,
-            score: Math.max(0, Number(stats?.[metric]) || 0)
-          }))
-          .filter(entry => entry.score > 0)
-          .sort((a, b) => b.score - a.score || a.userId.localeCompare(b.userId))
-          .slice(0, 10);
-
-        const maxScore = ranking[0]?.score || 1;
-        const medals = ['🥇', '🥈', '🥉'];
-
-        const resolvedRanking = await Promise.all(ranking.map(async (entry, index) => {
-          const member = interaction.guild
-            ? await interaction.guild.members.fetch(entry.userId).catch(() => null)
-            : null;
-
-          const user = member?.user || await client.users.fetch(entry.userId).catch(() => null);
-          const displayName =
-            member?.displayName ||
-            user?.globalName ||
-            user?.username ||
-            `Unknown user (${entry.userId})`;
-
-          const safeName = displayName.replace(/[\\*_~`|]/g, '\\$&');
-          const rankLabel = medals[index] || `**#${index + 1}**`;
-
-          return {
-            avatarUrl:
-              member?.displayAvatarURL({ size: 128 }) ||
-              user?.displayAvatarURL({ size: 128 }) ||
-              null,
-            row: `${rankLabel} **${safeName}**  ·  **${entry.score}**`
-          };
-        }));
-
-        const description = resolvedRanking.length
-          ? resolvedRanking.map(entry => entry.row).join('\n\n')
-          : 'No giveaway statistics have been recorded yet.';
-
-        const embed = new EmbedBuilder()
-          .setTitle(isWins ? '🏆 GIVEAWAY WINS' : '🎟️ GIVEAWAY ENTRIES')
-          .setColor(0xFFD43B)
-          .setDescription(description)
-          .setFooter({
-            text: `Top 10 · ${isWins ? 'Giveaways won' : 'Giveaways entered'}`
-          })
-          .setTimestamp();
-
-        if (resolvedRanking[0]?.avatarUrl) {
-          embed.setThumbnail(resolvedRanking[0].avatarUrl);
-        }
-
-        return interaction.editReply({
-          embeds: [embed],
-          allowedMentions: { parse: [] }
+    if (interaction.commandName === 'unafk') {
+      if (!afkDatabase[interaction.user.id]) {
+        return interaction.reply({
+          content: 'ℹ️ You do not currently have an AFK status.',
+          ephemeral: true
         });
-      } catch (error) {
-        console.error('Leaderboard command error:', error);
-
-        return interaction.editReply({
-          content: '❌ Impossible d’afficher le classement pour le moment.',
-          embeds: []
-        }).catch(() => null);
       }
+
+      delete afkDatabase[interaction.user.id];
+      saveDatabase();
+
+      return interaction.reply({
+        content: '👋 Your AFK status has been removed.',
+        ephemeral: true
+      });
+    }
+
+    if (interaction.commandName === 'leaderboard' || interaction.commandName === 'lb') {
+      const metric = interaction.options.getString('type', true);
+      const isWins = metric === 'won';
+      const ranking = Object.entries(statsDatabase)
+        .map(([userId, stats]) => ({
+          userId,
+          score: Math.max(0, Number(stats?.[metric]) || 0)
+        }))
+        .filter(entry => entry.score > 0)
+        .sort((a, b) => b.score - a.score || a.userId.localeCompare(b.userId))
+        .slice(0, 10);
+
+      const resolvedRanking = await Promise.all(ranking.map(async (entry, index) => {
+        const member = interaction.guild
+          ? await interaction.guild.members.fetch(entry.userId).catch(() => null)
+          : null;
+        const user = member?.user || await client.users.fetch(entry.userId).catch(() => null);
+        const displayName = member?.displayName || user?.globalName || user?.username || `Unknown user (${entry.userId})`;
+        const safeName = displayName.replace(/[\\*_~`|]/g, '\\$&');
+        const maxScore = ranking[0]?.score || 1;
+        const filledBlocks = Math.max(1, Math.round((entry.score / maxScore) * 10));
+        const bar = '🟨'.repeat(filledBlocks) + '⬛'.repeat(10 - filledBlocks);
+        const medals = ['🥇', '🥈', '🥉'];
+        const rankLabel = medals[index] || `**#${index + 1}**`;
+
+        return {
+          ...entry,
+          displayName: safeName,
+          avatarUrl: member?.displayAvatarURL({ size: 128 }) || user?.displayAvatarURL({ size: 128 }) || null,
+          row: `${rankLabel} **${safeName}**  ·  **${entry.score}**\n> ${bar}`
+        };
+      }));
+
+      const description = resolvedRanking.length
+        ? resolvedRanking.map(entry => entry.row).join('\n\n')
+        : 'No giveaway statistics have been recorded yet.';
+
+      const embed = new EmbedBuilder()
+        .setTitle(isWins ? '🏆 GIVEAWAY WINS' : '🎟️ GIVEAWAY ENTRIES')
+        .setColor(0xFFD43B)
+        .setDescription(description)
+        .setFooter({ text: `Top 10 · ${isWins ? 'Giveaways won' : 'Giveaways entered'}` })
+        .setTimestamp();
+
+      if (resolvedRanking[0]?.avatarUrl) {
+        embed.setThumbnail(resolvedRanking[0].avatarUrl);
+      }
+
+      return interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     }
 
     const targetUser = interaction.options.getUser('target') || interaction.user;
@@ -824,7 +922,7 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
     const desc = descRaw.replace(/\\n/g, '\n');
     const imageAttachment = interaction.options.getAttachment('image');
 
-    const imgUrl = imageAttachment ? imageAttachment.url : "https://imgur.com";
+    let imgUrl = imageAttachment ? imageAttachment.url : "https://imgur.com";
 
     ticketPanelsDatabase[interaction.guild.id] = { title, desc, image: imgUrl };
     saveDatabase();
@@ -875,8 +973,8 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
       .setColor('#F1C40F')
       .setDescription('Here is a complete list of all features integrated:\n\n')
       .addFields(
-        { name: '✨ Slash Commands (/)', value: '`/ticketpanel` - Configures interactive panels with drag & drop image (Admin)\n`/close` - Closes active ticket channel\n`/help` - Displays this menu\n`/wjamal` - Sends frog GIF\n`/claimtime` - Displays rules\n`/userinfo` - Shows info\n`/serverinfo` - Displays server metrics\n`/avatar` - Avatar view\n`/infractions` - Warnings ledger\n`/gcreate` - Giveaway setup\n`/gend` - Force close\n`/greroll` - Re-roll winner\n`/gwblacklist` - Blacklist user\n`/gwunblacklist` - Unblacklist user\n`/stats` - Giveaway stats\n`/statsreset` - Wipe stats\n`/rename` - Renames channel' },
-        { name: '🛠️ Prefix Commands (?)', value: '`?warn` - Warn user\n`?unwarn` - Pop warning (Sr. Mod +)\n`?to` - Timeout member\n`?rto` - Remove timeout\n`?ban` - Ban user (Sr. Mod +)\n`?unban` - Unban profile (Sr. Mod +)\n`?lock` - Lock channel\n`?unlock` - Unlock channel\n``?clear <count>` - Purge messages\n`?roleadd @user @role` - Add role' },
+        { name: '✨ Slash Commands (/)', value: '`/ticketpanel` - Configure the ticket panel (Admin)\n`/ticket` - Open a support ticket (deprecated)\n`/close` - Close the current ticket\n`/add` and `/remove` - Manage ticket access\n`/gcreate` - Set up a giveaway\n`/gend` - End a giveaway\n`/greroll` - Reroll a winner\n`/gwblacklist` and `/gwunblacklist` - Manage giveaway blacklist\n`/leaderboard` and `/lb` - View entries or wins ranking\n`/stats` - View giveaway stats\n`/statsreset` - Reset a member’s stats (Admin)\n`/afk` - Set AFK status\n`/unafk` - Remove your AFK status\n`/claimtime` - View claim times\n`/winnerinfo` - View the last giveaway summary\n`/userinfo`, `/serverinfo`, `/avatar`, `/infractions`, `/faq`\n`/rename` - Rename the current channel\n`/wjamal` - Send the frog GIF\n`/help` - Show this command list' },
+        { name: '🛠️ Prefix Commands (?)', value: '`?warn @member [reason]` - Warn a member\n`?unwarn @member` - Remove a warning (Sr. Mod +)\n`?to @member [duration] [reason]` - Timeout\n`?rto @member` - Remove timeout\n`?ban @member [reason]` / `?unban <ID>` - Ban or unban (Sr. Mod +)\n`?lock` / `?unlock` - Lock or unlock this channel\n`?slowmode <0-21600>` - Set slowmode in seconds; `0` disables it\n`?clear <count>` - Purge 1–100 messages\n`?roleadd @member @role` - Add a role\n`?roleremove @member @role` - Remove a role' },
         { name: '🎉 Automation System (!)', value: '`!gstart <minutes> <prize>` - Instantly launches a classic giveaway.' }
       )
       .setFooter({ text: "Waffel's Giveaway Utility" });
@@ -885,9 +983,7 @@ async function handleUtilitySlashCommands(interaction, targetUser) {
   }
 
   handleRestOfUtilitySlashCommands(interaction, targetUser);
-}
-
-async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
+}async function handleRestOfUtilitySlashCommands(interaction, targetUser) {
   if (interaction.commandName === 'claimtime') {
     const embed = new EmbedBuilder()
       .setTitle('🎉 Giveaway Info')
@@ -1098,7 +1194,9 @@ async function handleComponentInteractions(interaction) {
   }
 
   handleGiveawaySetupComponentsAndClaims(interaction);
-}async function handleGiveawaySetupComponentsAndClaims(interaction) {
+}
+
+async function handleGiveawaySetupComponentsAndClaims(interaction) {
   if (interaction.isModalSubmit() && interaction.customId.startsWith('submit_ticket_channel_')) {
     const topic = interaction.customId.replace('submit_ticket_channel_', '');
     const guild = interaction.guild;
@@ -1260,13 +1358,33 @@ async function handleComponentInteractions(interaction) {
 
 async function handleOriginalGiveawayLogicProcessing(interaction) {
   if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_claim_ticket_')) {
-    const parts = interaction.customId.split('_');
-    const winnerId = parts[3];
-    const prize = Buffer.from(parts[4], 'base64').toString('utf8');
-    const host = Buffer.from(parts[5], 'base64').toString('utf8');
+    const claimRef = interaction.customId.slice('modal_claim_ticket_'.length);
+    const claim = claimAuthorizations[claimRef];
+    let prize;
+    let host;
 
-    if (interaction.user.id !== winnerId) {
-      return interaction.reply({ content: '❌ This claim form belongs to another winner.', ephemeral: true });
+    if (claim) {
+      if (!claim.winnerIds.includes(interaction.user.id)) {
+        return interaction.reply({ content: '❌ This claim form belongs to another winner.', ephemeral: true });
+      }
+      claim.claimedBy = claim.claimedBy || [];
+      claim.pendingBy = claim.pendingBy || [];
+      if (claim.claimedBy.includes(interaction.user.id) || claim.pendingBy.includes(interaction.user.id)) {
+        return interaction.reply({ content: '❌ You have already submitted this claim.', ephemeral: true });
+      }
+      claim.pendingBy.push(interaction.user.id);
+      saveDatabase();
+      prize = claim.prize;
+      host = claim.hostUser;
+    } else {
+      // Accepte aussi les anciens boutons encore présents dans les messages Discord.
+      const parts = claimRef.split('_');
+      const winnerId = parts[0];
+      if (interaction.user.id !== winnerId) {
+        return interaction.reply({ content: '❌ This claim form belongs to another winner.', ephemeral: true });
+      }
+      prize = Buffer.from(parts[1], 'base64').toString('utf8');
+      host = Buffer.from(parts[2], 'base64').toString('utf8');
     }
 
     await interaction.deferReply({ ephemeral: true });
@@ -1311,9 +1429,18 @@ async function handleOriginalGiveawayLogicProcessing(interaction) {
       });
 
       await logTicketOpened(channel, interaction.user, 'Giveaway-Claim');
+      if (claim) {
+        claim.pendingBy = claim.pendingBy.filter(id => id !== interaction.user.id);
+        claim.claimedBy.push(interaction.user.id);
+        saveDatabase();
+      }
       return interaction.editReply({ content: `✅ Claim ticket created: ${channel}` });
     } catch (error) {
       console.error('Could not create the claim ticket:', error);
+      if (claim) {
+        claim.pendingBy = claim.pendingBy.filter(id => id !== interaction.user.id);
+        saveDatabase();
+      }
       return interaction.editReply({
         content: '❌ Could not create the claim ticket. Check the ticket category and bot permissions.'
       });
@@ -1326,16 +1453,31 @@ async function handleOriginalGiveawayLogicProcessing(interaction) {
 async function handleButtonsEngineProcessing(interaction) {
   if (interaction.isButton() && interaction.customId.startsWith('claim_gw_')) {
     const parts = interaction.customId.split('_');
-    const allowedWinnerId = parts[2];
-    const rawPrizeB64 = parts[3];
-    const rawHostB64 = parts[4];
+    const claimRef = parts.slice(2).join('_');
+    const claim = claimAuthorizations[claimRef];
+    let modalId;
 
-    if (interaction.user.id !== allowedWinnerId) {
-      return interaction.reply({ content: "❌ Access Denied.", ephemeral: true });
+    if (claim) {
+      if (!claim.winnerIds.includes(interaction.user.id)) {
+        return interaction.reply({ content: '❌ Access denied. Only the giveaway winners can claim this reward.', ephemeral: true });
+      }
+      claim.claimedBy = claim.claimedBy || [];
+      claim.pendingBy = claim.pendingBy || [];
+      if (claim.claimedBy.includes(interaction.user.id) || claim.pendingBy.includes(interaction.user.id)) {
+        return interaction.reply({ content: '❌ You have already submitted this claim.', ephemeral: true });
+      }
+      modalId = `modal_claim_ticket_${claimRef}`;
+    } else {
+      // Compatibilité avec les anciens boutons individuels, qui whitelistent un seul gagnant.
+      const allowedWinnerId = parts[2];
+      if (interaction.user.id !== allowedWinnerId) {
+        return interaction.reply({ content: '❌ Access denied. Only the giveaway winner can claim this reward.', ephemeral: true });
+      }
+      modalId = `modal_claim_ticket_${parts.slice(2).join('_')}`;
     }
 
     const modal = new ModalBuilder()
-      .setCustomId("modal_claim_ticket_" + allowedWinnerId + "_" + rawPrizeB64 + "_" + rawHostB64)
+      .setCustomId(modalId)
       .setTitle('Claim Reward Menu');
 
     const ignInput = new TextInputBuilder()
@@ -1511,7 +1653,9 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
   collector.on('end', () => {
     runGiveawayEnd(channel, msgId);
   });
-}async function handleGiveawayLeaveButton(interaction) {
+}
+
+async function handleGiveawayLeaveButton(interaction) {
   const [, , msgId, expectedUserId] = interaction.customId.split('_');
 
   if (interaction.user.id !== expectedUserId) {
@@ -1547,7 +1691,7 @@ function resumeGiveawayCollector(channel, msgId, durationMs) {
 
   saveDatabase();
 
-  // Répond immédiatement au bouton pour éviter le délai d'expiration.
+  // Répond immédiatement au bouton pour éviter le délai d’interaction Discord.
   await interaction.update({
     content: "👋 You left the giveaway.",
     components: []
@@ -1617,6 +1761,45 @@ async function runGiveawayEnd(channel, msgId) {
     return;
   }
 
+  const forcedWinnerIds = getForcedWinnerIds(msgId, gw);
+  if (forcedWinnerIds.length > 0) {
+    const totalWinnerSlots = Math.min(gw.winnerCount, gw.participants.length);
+    const remainingSlots = totalWinnerSlots - forcedWinnerIds.length;
+    const randomPool = gw.participants.filter(id => !forcedWinnerIds.includes(id));
+    const additionalWinners = randomPool
+      .sort(() => 0.5 - Math.random())
+      .slice(0, remainingSlots);
+    const winners = [...forcedWinnerIds, ...additionalWinners];
+    const mentions = winners.map(id => `<@${id}>`).join(', ');
+
+    gw.winners = winners.slice();
+    winners.forEach(id => {
+      initStats(id);
+      statsDatabase[id].won += 1;
+    });
+    saveDatabase();
+
+    if (endMsg) {
+      await endMsg.edit({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(gw.title)
+            .setDescription(
+              `🎉 GIVEAWAY ENDED!\n👑 Winner(s): ${mentions}\n👑 Hosted by: ${gw.hostUser}\n🎁 Each winner gets: ${gw.prize}`
+            )
+            .setColor('#2ECC71')
+        ]
+      });
+    }
+
+    await channel.send({
+      content: `🎉 Congratulations ${mentions}! Use this button to claim your reward.`,
+      components: [createClaimButtonRow(winners, gw.prize, gw.hostUser)],
+      allowedMentions: { users: winners }
+    });
+    return;
+  }
+
   const rawPrizeB64 = Buffer.from(gw.prize).toString('base64');
   const rawHostB64 = Buffer.from(gw.hostUser).toString('base64');
 
@@ -1628,10 +1811,7 @@ async function runGiveawayEnd(channel, msgId) {
     statsDatabase[wId].won += 1;
     saveDatabase();
 
-    const claim = new ButtonBuilder()
-      .setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64)
-      .setLabel('Claim 🟢')
-      .setStyle(ButtonStyle.Success);
+    const claimRow = createClaimButtonRow([wId], gw.prize, gw.hostUser);
 
     if (endMsg) {
       await endMsg.edit({
@@ -1649,7 +1829,7 @@ async function runGiveawayEnd(channel, msgId) {
 
     await channel.send({
       content: "⚡ 🧇 **WAFFLE CLICKER WINNER!** Congratulations <@" + wId + ">!",
-      components: [new ActionRowBuilder().addComponents(claim)]
+      components: [claimRow]
     });
 
     return;
@@ -1686,17 +1866,10 @@ async function runGiveawayEnd(channel, msgId) {
     });
     saveDatabase();
 
-    for (const winnerId of winners) {
-      const claim = new ButtonBuilder()
-        .setCustomId("claim_gw_" + winnerId + "_" + rawPrizeB64 + "_" + rawHostB64)
-        .setLabel('Claim 🟢')
-        .setStyle(ButtonStyle.Success);
-
-      await channel.send({
-        content: "🎉 **CONGRATULATIONS** <@" + winnerId + ">! You won **" + gw.prize + "**!",
-        components: [new ActionRowBuilder().addComponents(claim)]
-      });
-    }
+    await channel.send({
+      content: `🎉 **CONGRATULATIONS** ${mentions}! You won **${gw.prize}**. Each winner can use the same claim button once.`,
+      components: [createClaimButtonRow(winners, gw.prize, gw.hostUser)]
+    });
   }
 
   handleMiniGamesArbitration(
@@ -1713,10 +1886,6 @@ async function runGiveawayEnd(channel, msgId) {
 
 async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, mode, originHost, rawPrizeB64, rawHostB64) {
   if (mode === 'clicker' || mode === 'normal') return;
-
-  const claimBtn = new ButtonBuilder()
-    .setLabel('Claim 🟢')
-    .setStyle(ButtonStyle.Success);
 
   if (mode === 'dok') {
     const wId = winners[0];
@@ -1750,11 +1919,7 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
 
         await gInt.reply({
           content: "🔒 Kept **" + prize + "**!",
-          components: [
-            new ActionRowBuilder().addComponents(
-              claimBtn.setCustomId("claim_gw_" + wId + "_" + rawPrizeB64 + "_" + rawHostB64)
-            )
-          ]
+          components: [createClaimButtonRow([wId], prize, originHost)]
         });
       } else {
         let nPrize = prize;
@@ -1782,12 +1947,11 @@ async function handleMiniGamesArbitration(channel, winners, prize, winnerCount, 
     prize,
     rawPrizeB64,
     rawHostB64,
-    mode,
-    claimBtn
+    mode
   );
 }
 
-async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode, claimBtn) {
+async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPrizeB64, rawHostB64, mode) {
   if (mode === 'sos' && winners.length >= 2) {
     const p1 = winners[0];
     const p2 = winners[1];
@@ -1829,17 +1993,10 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
           initStats(p2);
           statsDatabase[p2].won += 1;
 
-          for (const winnerId of [p1, p2]) {
-            const splitClaimBtn = new ButtonBuilder()
-              .setCustomId("claim_gw_" + winnerId + "_" + rawPrizeB64 + "_" + rawHostB64)
-              .setLabel('Claim 🟢')
-              .setStyle(ButtonStyle.Success);
-
-            await channel.send({
-              content: "🤝 **SPLIT!** <@" + winnerId + "> can claim their share of **" + prize + "**!",
-              components: [new ActionRowBuilder().addComponents(splitClaimBtn)]
-            });
-          }
+          await channel.send({
+            content: `🤝 **SPLIT!** <@${p1}> and <@${p2}> can each claim their share of **${prize}** using this button.`,
+            components: [createClaimButtonRow([p1, p2], prize, originHost)]
+          });
         } else if (choices[p1] === 'steal' && choices[p2] === 'steal') {
           await channel.send("💀 **BOTH STOLE!** No winners.");
         } else {
@@ -1849,11 +2006,7 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
 
           await channel.send({
             content: "😈 **BETRAYAL!** <@" + thief + "> won everything!",
-            components: [
-              new ActionRowBuilder().addComponents(
-                claimBtn.setCustomId("claim_gw_" + thief + "_" + rawPrizeB64 + "_" + rawHostB64)
-              )
-            ]
+            components: [createClaimButtonRow([thief], prize, originHost)]
           });
         }
 
@@ -1913,11 +2066,7 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
 
           await channel.send({
             content: "👑 **VICTORY!** <@" + p1 + "> won!",
-            components: [
-              new ActionRowBuilder().addComponents(
-                claimBtn.setCustomId("claim_gw_" + p1 + "_" + rawPrizeB64 + "_" + rawHostB64)
-              )
-            ]
+            components: [createClaimButtonRow([p1], prize, originHost)]
           });
         } else {
           initStats(p2);
@@ -1925,11 +2074,7 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
 
           await channel.send({
             content: "👑 **VICTORY!** <@" + p2 + "> won!",
-            components: [
-              new ActionRowBuilder().addComponents(
-                claimBtn.setCustomId("claim_gw_" + p2 + "_" + rawPrizeB64 + "_" + rawHostB64)
-              )
-            ]
+            components: [createClaimButtonRow([p2], prize, originHost)]
           });
         }
 
@@ -1937,7 +2082,9 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
       }
     });
   }
-}async function handleGiveawayEngineSlashCommands(interaction) {
+}
+
+async function handleGiveawayEngineSlashCommands(interaction) {
   if (interaction.commandName === 'gcreate') {
     const menu = new StringSelectMenuBuilder()
       .setCustomId('select_waffel_mode')
@@ -2028,15 +2175,6 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
     const prize = gw.prize || 'Unknown Prize';
     const cleanHost = gw.hostUser || interaction.user.toString();
 
-    const claimBtn = new ButtonBuilder()
-      .setCustomId(
-        "claim_gw_" + randomMember.id + "_" +
-        Buffer.from(prize).toString('base64') + "_" +
-        Buffer.from(cleanHost).toString('base64')
-      )
-      .setLabel('Claim 🟢')
-      .setStyle(ButtonStyle.Success);
-
     gw.rerolledWinners.push(randomMember.id);
     initStats(randomMember.id);
     statsDatabase[randomMember.id].won += 1;
@@ -2044,7 +2182,7 @@ async function handleAdvancedMiniGamesArbitration(channel, winners, prize, rawPr
 
     await giveawayChannel.send({
       content: "🎲 **NEW REROLL WINNER!** Congratulations " + randomMember.toString() + ", you won **" + prize + "**!",
-      components: [new ActionRowBuilder().addComponents(claimBtn)]
+      components: [createClaimButtonRow([randomMember.id], prize, cleanHost)]
     });
 
     return;
