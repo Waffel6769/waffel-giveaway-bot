@@ -1270,7 +1270,7 @@ async function handleButtonsEngineProcessing(interaction) {
 }
 
 async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode, customTitle, hostUser) {
-  const endTime = Date.now() + durationMs;async function startGiveawayEngine(channel, durationMs, prize, winnerCount, mode, customTitle, hostUser) {
+ 
   const endTime = Date.now() + durationMs;
   const endTimeStamp = Math.floor(endTime / 1000);
   const title = customTitle ? " 🧇 " + customTitle + " 🧇 " : "✨ WAFFEL'S GIVEAWAY ✨";
